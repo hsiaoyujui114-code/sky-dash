@@ -1,5 +1,5 @@
 {
   "name": "Sky Dash",
-  "description": "A flying game with power-ups and obstacles.",
+  "description": "A real-time multiplayer game where you compete to collect coins. Features single-player mode with different difficulties and a multiplayer arena.",
   "requestFramePermissions": []
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane } from 'lucide-react';
+import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Hourglass } from 'lucide-react';
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -9,7 +9,7 @@ const MAX_FALL_SPEED = 10;
 const MAX_RISE_SPEED = -8;
 
 type GameState = 'start' | 'playing' | 'gameover' | 'history' | 'level_select' | 'victory' | 'ship_select';
-type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon';
+type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky';
 
@@ -310,7 +310,9 @@ export default function Game() {
     shield: 0,
     boost: 0,
     doubleScore: 0,
-    weapon: 0
+    weapon: 0,
+    star: 0,
+    slow: 0
   });
   
   const requestRef = useRef<number>();
@@ -340,7 +342,9 @@ export default function Game() {
     shield: 0,
     boost: 0,
     doubleScore: 0,
-    weapon: 0
+    weapon: 0,
+    star: 0,
+    slow: 0
   });
 
   // Load history and ship on mount
@@ -407,10 +411,10 @@ export default function Game() {
     frameCountRef.current = 0;
     scoreRef.current = 0;
     speedRef.current = LEVELS[level].baseSpeed;
-    powerupsRef.current = { shield: 0, boost: 0, doubleScore: 0, weapon: 0 };
+    powerupsRef.current = { shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 };
     setScore(0);
     setProgress(0);
-    setPowerups({ shield: 0, boost: 0, doubleScore: 0, weapon: 0 });
+    setPowerups({ shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 });
     setGameState('playing');
   };
 
@@ -470,13 +474,15 @@ export default function Game() {
         playSound('shoot');
       }
     }
+    if (pUps.star > 0) { pUps.star--; powerupsChanged = true; }
+    if (pUps.slow > 0) { pUps.slow--; powerupsChanged = true; }
 
     if (powerupsChanged && frameCountRef.current % 10 === 0) {
       setPowerups({ ...pUps });
     }
 
-    // Base speed increases slightly over time, Boost adds temporary massive speed
-    const currentSpeed = speedRef.current + (pUps.boost > 0 ? 10 : 0);
+    // Base speed increases slightly over time, Boost adds temporary massive speed, Slow reduces speed
+    const currentSpeed = speedRef.current + (pUps.boost > 0 ? 10 : (pUps.star > 0 ? 5 : 0)) - (pUps.slow > 0 ? 3 : 0);
 
     if (frameCountRef.current % 600 === 0) {
       speedRef.current += 0.2; // Slower speed creep since we have levels
@@ -522,7 +528,7 @@ export default function Game() {
     } else if (player.y + player.height > CANVAS_HEIGHT) {
       player.y = CANVAS_HEIGHT - player.height;
       player.vy = 0;
-      if (pUps.shield <= 0 && pUps.boost <= 0 && !isGracePeriod) {
+      if (pUps.shield <= 0 && pUps.boost <= 0 && pUps.star <= 0 && !isGracePeriod) {
         gameOver();
         return;
       } else if (!isGracePeriod) {
@@ -568,10 +574,12 @@ export default function Game() {
       const rand = Math.random();
       let type: ItemType = 'coin';
       
-      if (rand < 0.10) type = 'shield';
-      else if (rand < 0.20) type = 'boost';
-      else if (rand < 0.30) type = 'weapon';
-      else if (rand < 0.45) type = 'double_score';
+      if (rand < 0.05) type = 'star';
+      else if (rand < 0.15) type = 'shield';
+      else if (rand < 0.25) type = 'boost';
+      else if (rand < 0.35) type = 'weapon';
+      else if (rand < 0.50) type = 'double_score';
+      else if (rand < 0.60) type = 'slow';
 
       itemsRef.current.push({
         id: itemIdCounter.current++,
@@ -624,7 +632,7 @@ export default function Game() {
         player.y < obs.y + obs.height &&
         player.y + player.height > obs.y
       ) {
-        if (pUps.shield > 0 || pUps.boost > 0) {
+        if (pUps.shield > 0 || pUps.boost > 0 || pUps.star > 0) {
           // Destroy obstacle if shielded or boosting
           spawnParticles(obs.x + obs.width / 2, obs.y + obs.height / 2, '#ef4444', 30);
           playSound('explosion');
@@ -633,7 +641,7 @@ export default function Game() {
           setScore(scoreRef.current);
           
           // If only shielded (not boosting), remove shield after 1 hit
-          if (pUps.shield > 0 && pUps.boost <= 0) {
+          if (pUps.shield > 0 && pUps.boost <= 0 && pUps.star <= 0) {
             pUps.shield = 0;
             spawnParticles(player.x + player.width / 2, player.y + player.height / 2, '#3b82f6', 30);
           }
@@ -679,6 +687,12 @@ export default function Game() {
           } else if (item.type === 'weapon') {
             pUps.weapon = 480; // 8 seconds
             spawnParticles(item.x, item.y, '#22c55e', 30);
+          } else if (item.type === 'star') {
+            pUps.star = 600; // 10 seconds
+            spawnParticles(item.x, item.y, '#a855f7', 30);
+          } else if (item.type === 'slow') {
+            pUps.slow = 300; // 5 seconds
+            spawnParticles(item.x, item.y, '#10b981', 30);
           }
           setPowerups({ ...pUps });
         }
@@ -737,7 +751,7 @@ export default function Game() {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Grid lines for speed illusion
-    const currentSpeed = speedRef.current + (powerupsRef.current.boost > 0 ? 10 : 0);
+    const currentSpeed = speedRef.current + (powerupsRef.current.boost > 0 ? 10 : 0) - (powerupsRef.current.slow > 0 ? 3 : 0);
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 2;
     const offset = (frameCountRef.current * currentSpeed) % 100;
@@ -837,6 +851,12 @@ export default function Game() {
       } else if (item.type === 'weapon') {
         ctx.fillStyle = '#22c55e';
         ctx.shadowColor = '#22c55e';
+      } else if (item.type === 'star') {
+        ctx.fillStyle = `hsl(${(frameCountRef.current * 5) % 360}, 100%, 50%)`;
+        ctx.shadowColor = '#a855f7';
+      } else if (item.type === 'slow') {
+        ctx.fillStyle = '#10b981';
+        ctx.shadowColor = '#10b981';
       }
       
       ctx.shadowBlur = 15;
@@ -858,6 +878,8 @@ export default function Game() {
       if (item.type === 'boost') ctx.fillText('B', item.x, item.y);
       if (item.type === 'double_score') ctx.fillText('2x', item.x, item.y);
       if (item.type === 'weapon') ctx.fillText('W', item.x, item.y);
+      if (item.type === 'star') ctx.fillText('★', item.x, item.y);
+      if (item.type === 'slow') ctx.fillText('Sl', item.x, item.y);
     });
 
     // Player
@@ -873,7 +895,11 @@ export default function Game() {
       
       // Player body color based on powerups
       let shipColor = shipConfig.baseColor;
-      if (pUps.boost > 0) {
+      if (pUps.star > 0) {
+        shipColor = `hsl(${(frameCountRef.current * 10) % 360}, 100%, 60%)`;
+        ctx.shadowColor = shipColor;
+        ctx.shadowBlur = 25;
+      } else if (pUps.boost > 0) {
         shipColor = '#f97316';
         ctx.shadowColor = '#f97316';
         ctx.shadowBlur = 20;
@@ -884,6 +910,10 @@ export default function Game() {
       } else if (pUps.weapon > 0) {
         shipColor = '#22c55e';
         ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 15;
+      } else if (pUps.slow > 0) {
+        shipColor = '#10b981';
+        ctx.shadowColor = '#10b981';
         ctx.shadowBlur = 15;
       } else {
         ctx.shadowColor = shipColor;
@@ -1074,6 +1104,18 @@ export default function Game() {
                   <span className="text-green-300 font-mono text-sm">{Math.ceil(powerups.weapon / 60)}s</span>
                 </div>
               )}
+              {powerups.star > 0 && (
+                <div className="bg-purple-500/20 px-3 py-2 rounded-lg border border-purple-500/50 flex items-center gap-2 animate-pulse">
+                  <Star className="w-5 h-5 text-purple-400" />
+                  <span className="text-purple-300 font-mono text-sm">{Math.ceil(powerups.star / 60)}s</span>
+                </div>
+              )}
+              {powerups.slow > 0 && (
+                <div className="bg-emerald-500/20 px-3 py-2 rounded-lg border border-emerald-500/50 flex items-center gap-2 animate-pulse">
+                  <Hourglass className="w-5 h-5 text-emerald-400" />
+                  <span className="text-emerald-300 font-mono text-sm">{Math.ceil(powerups.slow / 60)}s</span>
+                </div>
+              )}
             </div>
           </div>
           
@@ -1147,6 +1189,15 @@ export default function Game() {
               <div>
                 <div className="text-white font-bold">Weapon (10%)</div>
                 <div className="text-slate-400 text-sm">Auto-shoot for 8s</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
+              <div className="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
+                <Star className="w-6 h-6 text-purple-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold">Star (5%)</div>
+                <div className="text-slate-400 text-sm">Invincible & Rainbow for 10s</div>
               </div>
             </div>
           </div>
