@@ -1218,6 +1218,15 @@ export default function Game() {
                 <div className="text-slate-400 text-sm">Invincible & Rainbow for 10s</div>
               </div>
             </div>
+            <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
+              <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center">
+                <Hourglass className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold">Slow (10%)</div>
+                <div className="text-slate-400 text-sm">Slows game speed for 5s</div>
+              </div>
+            </div>
           </div>
           <button 
             onClick={(e) => { e.stopPropagation(); setGameState('level_select'); }}
