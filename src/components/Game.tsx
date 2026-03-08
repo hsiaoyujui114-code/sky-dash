@@ -338,6 +338,9 @@ export default function Game() {
   const itemIdCounter = useRef(0);
   const bulletIdCounter = useRef(0);
   
+  const lastTimeRef = useRef<number>(0);
+  const accumulatorRef = useRef<number>(0);
+  
   const powerupsRef = useRef({
     shield: 0,
     boost: 0,
@@ -411,6 +414,8 @@ export default function Game() {
     frameCountRef.current = 0;
     scoreRef.current = 0;
     speedRef.current = LEVELS[level].baseSpeed;
+    lastTimeRef.current = 0;
+    accumulatorRef.current = 0;
     powerupsRef.current = { shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 };
     setScore(0);
     setProgress(0);
@@ -947,8 +952,21 @@ export default function Game() {
 
   }, [gameState, currentLevel, currentShip]);
 
-  const loop = useCallback(() => {
-    update();
+  const loop = useCallback((time: number) => {
+    if (!lastTimeRef.current) lastTimeRef.current = time;
+    const dt = time - lastTimeRef.current;
+    lastTimeRef.current = time;
+
+    // Cap dt to avoid spiral of death if tab is inactive
+    accumulatorRef.current += Math.min(dt, 100);
+
+    const TIME_STEP = 1000 / 60; // 60 FPS fixed step
+
+    while (accumulatorRef.current >= TIME_STEP) {
+      update();
+      accumulatorRef.current -= TIME_STEP;
+    }
+
     draw();
     requestRef.current = requestAnimationFrame(loop);
   }, [update, draw]);
