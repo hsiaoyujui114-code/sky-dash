@@ -219,43 +219,11 @@ interface ScoreRecord {
 }
 
 // Simple Web Audio API sound generator
-let sharedAudioCtx: AudioContext | null = null;
-
-const getAudioContext = () => {
-  if (!sharedAudioCtx) {
-    try {
-      if (window.AudioContext) {
-        try {
-          sharedAudioCtx = new window.AudioContext();
-        } catch (e) {
-          if ((window as any).webkitAudioContext) {
-            sharedAudioCtx = new (window as any).webkitAudioContext();
-          } else {
-            console.warn('AudioContext not supported or failed to initialize', e);
-            return null;
-          }
-        }
-      } else if ((window as any).webkitAudioContext) {
-        sharedAudioCtx = new (window as any).webkitAudioContext();
-      }
-    } catch (e) {
-      console.warn('AudioContext not supported or failed to initialize', e);
-      return null;
-    }
-  }
-  return sharedAudioCtx;
-};
-
 const playSound = (type: 'coin' | 'powerup' | 'shoot' | 'explosion' | 'crash' | 'victory' | 'select') => {
   try {
-    const audioCtx = getAudioContext();
-    if (!audioCtx) return;
-    
-    // Resume context if it was suspended (e.g. by browser autoplay policy)
-    if (audioCtx.state === 'suspended') {
-      audioCtx.resume();
-    }
-    
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const audioCtx = new AudioContext();
     const osc = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     osc.connect(gainNode);
