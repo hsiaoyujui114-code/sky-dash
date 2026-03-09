@@ -1,5 +1,16 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane } from 'lucide-react';
+import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket } from 'lucide-react';
+
+class SeededRandom {
+  private seed: number;
+  constructor(seed: number) {
+    this.seed = seed;
+  }
+  next() {
+    this.seed = (this.seed * 9301 + 49297) % 233280;
+    return this.seed / 233280;
+  }
+}
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -8,8 +19,8 @@ const THRUST = -1.2;
 const MAX_FALL_SPEED = 10;
 const MAX_RISE_SPEED = -8;
 
-type GameState = 'start' | 'playing' | 'gameover' | 'history' | 'level_select' | 'victory' | 'ship_select';
-type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow';
+type GameState = 'start' | 'playing' | 'gameover' | 'history' | 'level_select' | 'ship_select';
+type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky';
 
@@ -18,15 +29,14 @@ interface LevelConfig {
   name: string;
   baseSpeed: number;
   obstacleFrequency: number;
-  distanceToGoal: number;
   color: string;
 }
 
 const LEVELS: Record<Difficulty, LevelConfig> = {
-  easy: { id: 'easy', name: 'Easy', baseSpeed: 4, obstacleFrequency: 60, distanceToGoal: 2000, color: 'text-green-400' },
-  medium: { id: 'medium', name: 'Medium', baseSpeed: 6, obstacleFrequency: 45, distanceToGoal: 3000, color: 'text-yellow-400' },
-  hard: { id: 'hard', name: 'Hard', baseSpeed: 8, obstacleFrequency: 30, distanceToGoal: 4000, color: 'text-orange-400' },
-  expert: { id: 'expert', name: 'Expert', baseSpeed: 10, obstacleFrequency: 20, distanceToGoal: 5000, color: 'text-red-500' },
+  easy: { id: 'easy', name: 'Easy', baseSpeed: 4, obstacleFrequency: 60, color: 'text-green-400' },
+  medium: { id: 'medium', name: 'Medium', baseSpeed: 6, obstacleFrequency: 45, color: 'text-yellow-400' },
+  hard: { id: 'hard', name: 'Hard', baseSpeed: 8, obstacleFrequency: 30, color: 'text-orange-400' },
+  expert: { id: 'expert', name: 'Expert', baseSpeed: 10, obstacleFrequency: 20, color: 'text-red-500' },
 };
 
 interface ShipConfig {
@@ -209,12 +219,13 @@ interface Bullet {
   vx: number;
   width: number;
   height: number;
+  type?: 'bullet' | 'missile';
 }
 
 interface ScoreRecord {
   score: number;
   level: string;
-  result: 'Victory' | 'Crashed';
+  rank: string;
   date: string;
 }
 
@@ -347,6 +358,9 @@ export default function Game() {
     slow: 0
   });
 
+  const currentSeedRef = useRef<number>(Math.random());
+  const rngRef = useRef<SeededRandom>(new SeededRandom(currentSeedRef.current));
+
   // Load history and ship on mount
   useEffect(() => {
     const savedHistory = localStorage.getItem('skyDashHistoryV2');
@@ -378,13 +392,39 @@ export default function Game() {
     playerRef.current.height = SHIPS[shipId].height;
   };
 
-  const saveScore = (newScore: number, result: 'Victory' | 'Crashed') => {
-    if (newScore === 0 && result === 'Crashed') return;
+  const getRank = (currentScore: number) => {
+    const ranks = [
+      { name: 'Bronze', threshold: 0, color: 'text-orange-700', from: 'from-orange-800', to: 'to-orange-600' },
+      { name: 'Silver', threshold: 1000, color: 'text-slate-400', from: 'from-slate-500', to: 'to-slate-300' },
+      { name: 'Gold', threshold: 3000, color: 'text-yellow-400', from: 'from-yellow-600', to: 'to-yellow-400' },
+      { name: 'Platinum', threshold: 6000, color: 'text-cyan-400', from: 'from-cyan-600', to: 'to-cyan-400' },
+      { name: 'Diamond', threshold: 10000, color: 'text-blue-400', from: 'from-blue-600', to: 'to-blue-400' },
+      { name: 'Master', threshold: 15000, color: 'text-purple-500', from: 'from-purple-700', to: 'to-purple-500' },
+      { name: 'Grandmaster', threshold: 25000, color: 'text-red-500', from: 'from-red-700', to: 'to-red-500' },
+    ];
+    let currentRank = ranks[0];
+    let nextRank = ranks[1];
+    for (let i = 0; i < ranks.length; i++) {
+      if (currentScore >= ranks[i].threshold) {
+        currentRank = ranks[i];
+        nextRank = ranks[i + 1] || ranks[i];
+      }
+    }
+    let progress = 100;
+    if (nextRank !== currentRank) {
+      progress = ((currentScore - currentRank.threshold) / (nextRank.threshold - currentRank.threshold)) * 100;
+    }
+    return { currentRank, nextRank, progress };
+  };
+
+  const saveScore = (newScore: number) => {
+    if (newScore === 0) return;
     
+    const { currentRank } = getRank(newScore);
     const newRecord: ScoreRecord = {
       score: newScore,
       level: LEVELS[currentLevel].name,
-      result,
+      rank: currentRank.name,
       date: new Date().toLocaleString()
     };
     
@@ -395,8 +435,14 @@ export default function Game() {
     });
   };
 
-  const startGame = (level: Difficulty) => {
+  const startGame = (level: Difficulty, keepSeed: boolean = false) => {
+    if (!keepSeed) {
+      currentSeedRef.current = Math.random();
+    }
+    rngRef.current = new SeededRandom(currentSeedRef.current);
+    
     setCurrentLevel(level);
+    isThrusting.current = false;
     playerRef.current = {
       x: 100,
       y: CANVAS_HEIGHT / 2,
@@ -442,15 +488,10 @@ export default function Game() {
     
     frameCountRef.current++;
     
-    // Check Victory
-    if (frameCountRef.current >= config.distanceToGoal) {
-      victory();
-      return;
-    }
-
-    // Update Progress
+    // Update Progress (Rank)
     if (frameCountRef.current % 10 === 0) {
-      setProgress(Math.min(100, (frameCountRef.current / config.distanceToGoal) * 100));
+      const { progress: rankProgress } = getRank(scoreRef.current);
+      setProgress(rankProgress);
     }
     
     // Decrease powerup timers
@@ -484,8 +525,8 @@ export default function Game() {
     // Base speed increases slightly over time, Boost adds temporary massive speed, Slow reduces speed
     const currentSpeed = (speedRef.current + (pUps.boost > 0 ? 10 : 0)) * (pUps.slow > 0 ? 0.5 : 1);
 
-    if (frameCountRef.current % 600 === 0) {
-      speedRef.current += 0.2; // Slower speed creep since we have levels
+    if (frameCountRef.current % 300 === 0) {
+      speedRef.current += 0.2; // Speed increases endlessly
     }
 
     if (frameCountRef.current % 10 === 0) {
@@ -536,15 +577,12 @@ export default function Game() {
       }
     }
 
-    // Stop spawning things near the end
-    const isNearEnd = frameCountRef.current > config.distanceToGoal - 100;
-
     // Spawn Obstacles (start spawning after grace period)
-    if (!isGracePeriod && !isNearEnd && frameCountRef.current % Math.max(15, config.obstacleFrequency - Math.floor(speedRef.current)) === 0) {
-      const typeRand = Math.random();
+    if (!isGracePeriod && frameCountRef.current % Math.max(15, config.obstacleFrequency - Math.floor(speedRef.current)) === 0) {
+      const typeRand = rngRef.current.next();
       let type: 'top' | 'bottom' | 'floating' = 'floating';
-      let width = 40 + Math.random() * 40;
-      let height = 100 + Math.random() * 150;
+      let width = 40 + rngRef.current.next() * 40;
+      let height = 100 + rngRef.current.next() * 150;
       let y = 0;
 
       if (typeRand < 0.33) {
@@ -555,8 +593,8 @@ export default function Game() {
         y = CANVAS_HEIGHT - height;
       } else {
         type = 'floating';
-        height = 40 + Math.random() * 60;
-        y = Math.random() * (CANVAS_HEIGHT - height);
+        height = 40 + rngRef.current.next() * 60;
+        y = rngRef.current.next() * (CANVAS_HEIGHT - height);
       }
 
       obstaclesRef.current.push({
@@ -570,8 +608,8 @@ export default function Game() {
     }
 
     // Spawn Items (start spawning after grace period)
-    if (!isGracePeriod && !isNearEnd && frameCountRef.current % 120 === 0) {
-      const rand = Math.random();
+    if (!isGracePeriod && frameCountRef.current % 120 === 0) {
+      const rand = rngRef.current.next();
       let type: ItemType = 'coin';
       
       if (rand < 0.08) type = 'shield';
@@ -579,12 +617,13 @@ export default function Game() {
       else if (rand < 0.24) type = 'weapon';
       else if (rand < 0.32) type = 'star';
       else if (rand < 0.40) type = 'slow';
-      else if (rand < 0.50) type = 'double_score';
+      else if (rand < 0.48) type = 'missile';
+      else if (rand < 0.58) type = 'double_score';
 
       itemsRef.current.push({
         id: itemIdCounter.current++,
         x: CANVAS_WIDTH,
-        y: 50 + Math.random() * (CANVAS_HEIGHT - 100),
+        y: 50 + rngRef.current.next() * (CANVAS_HEIGHT - 100),
         radius: 15,
         type,
       });
@@ -608,7 +647,13 @@ export default function Game() {
           spawnParticles(obs.x, bullet.y, '#ef4444', 15);
           playSound('explosion');
           obstaclesRef.current.splice(j, 1);
-          scoreRef.current += (pUps.doubleScore > 0 ? 100 : 50);
+          
+          if (bullet.type === 'missile') {
+            scoreRef.current += (pUps.doubleScore > 0 ? 400 : 200);
+          } else {
+            scoreRef.current += (pUps.doubleScore > 0 ? 100 : 50);
+          }
+          
           setScore(scoreRef.current);
           hit = true;
           break;
@@ -673,6 +718,18 @@ export default function Game() {
           scoreRef.current += (pUps.doubleScore > 0 ? 200 : 100);
           spawnParticles(item.x, item.y, '#eab308', 15);
           playSound('coin');
+        } else if (item.type === 'missile') {
+          playSound('shoot');
+          bulletsRef.current.push({
+            id: bulletIdCounter.current++,
+            x: player.x + player.width,
+            y: player.y + player.height / 2 - 4,
+            vx: 20,
+            width: 30,
+            height: 8,
+            type: 'missile'
+          });
+          spawnParticles(item.x, item.y, '#ef4444', 30);
         } else {
           playSound('powerup');
           if (item.type === 'shield') {
@@ -723,21 +780,9 @@ export default function Game() {
   const gameOver = () => {
     playSound('crash');
     setGameState('gameover');
-    saveScore(scoreRef.current, 'Crashed');
+    saveScore(scoreRef.current);
     setHighScore(prev => Math.max(prev, scoreRef.current));
     spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#ef4444', 50);
-  };
-
-  const victory = () => {
-    playSound('victory');
-    setGameState('victory');
-    // Bonus score for completion based on level
-    const bonus = LEVELS[currentLevel].distanceToGoal;
-    scoreRef.current += bonus;
-    setScore(scoreRef.current);
-    saveScore(scoreRef.current, 'Victory');
-    setHighScore(prev => Math.max(prev, scoreRef.current));
-    spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#fbbf24', 100);
   };
 
   const draw = useCallback(() => {
@@ -760,29 +805,6 @@ export default function Game() {
       ctx.moveTo(i, 0);
       ctx.lineTo(i, CANVAS_HEIGHT);
       ctx.stroke();
-    }
-
-    // Draw Goal Line if near end
-    const config = LEVELS[currentLevel];
-    const framesLeft = config.distanceToGoal - frameCountRef.current;
-    if (framesLeft < CANVAS_WIDTH / currentSpeed && gameState === 'playing') {
-      const goalX = CANVAS_WIDTH - (framesLeft * currentSpeed);
-      
-      // Checkerboard pattern
-      const squareSize = 20;
-      for (let y = 0; y < CANVAS_HEIGHT; y += squareSize) {
-        ctx.fillStyle = (y / squareSize) % 2 === 0 ? '#fff' : '#000';
-        ctx.fillRect(goalX, y, squareSize, squareSize);
-        ctx.fillStyle = (y / squareSize) % 2 === 0 ? '#000' : '#fff';
-        ctx.fillRect(goalX + squareSize, y, squareSize, squareSize);
-      }
-      
-      // Glow
-      ctx.shadowColor = '#fbbf24';
-      ctx.shadowBlur = 20;
-      ctx.fillStyle = 'rgba(251, 191, 36, 0.2)';
-      ctx.fillRect(goalX - 10, 0, squareSize * 2 + 20, CANVAS_HEIGHT);
-      ctx.shadowBlur = 0;
     }
 
     // Speed lines if boosting
@@ -811,13 +833,23 @@ export default function Game() {
 
     // Bullets
     bulletsRef.current.forEach(b => {
-      ctx.fillStyle = '#22c55e';
-      ctx.shadowColor = '#22c55e';
-      ctx.shadowBlur = 10;
-      ctx.fillRect(b.x, b.y, b.width, b.height);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(b.x + b.width - 5, b.y + 1, 5, b.height - 2);
-      ctx.shadowBlur = 0;
+      if (b.type === 'missile') {
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 15;
+        ctx.fillRect(b.x, b.y, b.width, b.height);
+        ctx.fillStyle = '#f97316';
+        ctx.fillRect(b.x - 5, b.y + 1, 5, b.height - 2);
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = '#22c55e';
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(b.x, b.y, b.width, b.height);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(b.x + b.width - 5, b.y + 1, 5, b.height - 2);
+        ctx.shadowBlur = 0;
+      }
     });
 
     // Obstacles
@@ -852,11 +884,16 @@ export default function Game() {
         ctx.fillStyle = '#22c55e';
         ctx.shadowColor = '#22c55e';
       } else if (item.type === 'star') {
-        ctx.fillStyle = '#fcd34d';
-        ctx.shadowColor = '#fcd34d';
+        const hue = (frameCountRef.current * 5) % 360;
+        const starColor = `hsl(${hue}, 100%, 50%)`;
+        ctx.fillStyle = starColor;
+        ctx.shadowColor = starColor;
       } else if (item.type === 'slow') {
         ctx.fillStyle = '#c084fc';
         ctx.shadowColor = '#c084fc';
+      } else if (item.type === 'missile') {
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444';
       }
       
       ctx.shadowBlur = 15;
@@ -880,6 +917,7 @@ export default function Game() {
       if (item.type === 'weapon') ctx.fillText('W', item.x, item.y);
       if (item.type === 'star') ctx.fillText('★', item.x, item.y);
       if (item.type === 'slow') ctx.fillText('⏱', item.x, item.y);
+      if (item.type === 'missile') ctx.fillText('M', item.x, item.y);
     });
 
     // Player
@@ -887,7 +925,7 @@ export default function Game() {
     const pUps = powerupsRef.current;
     const shipConfig = SHIPS[currentShip];
     
-    if ((gameState !== 'gameover' && gameState !== 'victory') || particlesRef.current.length > 0) {
+    if (gameState !== 'gameover' || particlesRef.current.length > 0) {
       ctx.save();
       ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
       
@@ -961,8 +999,10 @@ export default function Game() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
         e.preventDefault();
-        if (gameState === 'start' || gameState === 'gameover' || gameState === 'victory') {
+        if (gameState === 'start') {
           setGameState('level_select');
+        } else if (gameState === 'gameover') {
+          startGame(currentLevel, true);
         } else if (gameState === 'playing') {
           isThrusting.current = true;
         }
@@ -985,8 +1025,10 @@ export default function Game() {
   }, [gameState]);
 
   const handlePointerDown = () => {
-    if (gameState === 'start' || gameState === 'gameover' || gameState === 'victory') {
+    if (gameState === 'start') {
       setGameState('level_select');
+    } else if (gameState === 'gameover') {
+      startGame(currentLevel, true);
     } else if (gameState === 'playing') {
       isThrusting.current = true;
     }
@@ -1048,6 +1090,8 @@ export default function Game() {
     );
   };
 
+  const { currentRank, nextRank } = getRank(score);
+
   return (
     <div className="relative w-full max-w-4xl aspect-[4/3] bg-slate-900 rounded-xl overflow-hidden shadow-2xl ring-4 ring-slate-800">
       <canvas
@@ -1066,13 +1110,20 @@ export default function Game() {
           <div className="flex justify-between items-start">
             <div className="flex flex-col gap-2">
               <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex items-center gap-3">
-                <Trophy className="w-5 h-5 text-yellow-500" />
+                <Trophy className={`w-5 h-5 ${currentRank.color}`} />
                 <span className="text-white font-mono text-xl font-bold">{score}</span>
               </div>
-              <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
-                <span className={`font-mono text-sm font-bold ${LEVELS[currentLevel].color}`}>
-                  {LEVELS[currentLevel].name.toUpperCase()}
-                </span>
+              <div className="flex gap-2">
+                <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
+                  <span className={`font-mono text-sm font-bold ${LEVELS[currentLevel].color}`}>
+                    {LEVELS[currentLevel].name.toUpperCase()}
+                  </span>
+                </div>
+                <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
+                  <span className={`font-mono text-sm font-bold ${currentRank.color}`}>
+                    {currentRank.name}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -1116,13 +1167,20 @@ export default function Game() {
             </div>
           </div>
           
-          {/* Progress Bar */}
-          <div className="w-full max-w-md mx-auto bg-slate-800/80 backdrop-blur rounded-full h-4 border border-slate-700 overflow-hidden relative">
-            <div 
-              className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-100"
-              style={{ width: `${progress}%` }}
-            />
-            <Flag className="absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-white" />
+          {/* Progress Bar (Rank) */}
+          <div className="w-full max-w-md mx-auto flex flex-col gap-1">
+            <div className="flex justify-between text-xs font-mono font-bold">
+              <span className={currentRank.color}>{currentRank.name}</span>
+              {currentRank.name !== nextRank.name && (
+                <span className={nextRank.color}>{nextRank.name}</span>
+              )}
+            </div>
+            <div className="w-full bg-slate-800/80 backdrop-blur rounded-full h-3 border border-slate-700 overflow-hidden relative">
+              <div 
+                className={`h-full bg-gradient-to-r ${currentRank.from} ${currentRank.to} transition-all duration-100`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -1189,8 +1247,8 @@ export default function Game() {
               </div>
             </div>
             <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
-              <div className="w-12 h-12 rounded-full bg-yellow-300/20 border-2 border-yellow-300 flex items-center justify-center">
-                <Star className="w-6 h-6 text-yellow-300" />
+              <div className="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
+                <Star className="w-6 h-6 text-purple-400" />
               </div>
               <div>
                 <div className="text-white font-bold">Star (8%)</div>
@@ -1198,12 +1256,21 @@ export default function Game() {
               </div>
             </div>
             <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
-              <div className="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
-                <History className="w-6 h-6 text-purple-400" />
+              <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center">
+                <History className="w-6 h-6 text-green-400" />
               </div>
               <div>
                 <div className="text-white font-bold">Slow (8%)</div>
                 <div className="text-slate-400 text-sm">Slows time for 5s</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
+              <div className="w-12 h-12 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center">
+                <Rocket className="w-6 h-6 text-red-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold">Missile (8%)</div>
+                <div className="text-slate-400 text-sm">Fires a missile, +200 pts on hit</div>
               </div>
             </div>
           </div>
@@ -1275,7 +1342,7 @@ export default function Game() {
                   </div>
                   <div className="text-slate-400 text-sm text-left">
                     Speed: {level.baseSpeed}x <br/>
-                    Distance: {Math.floor(level.distanceToGoal / 60)}s
+                    Endless Mode
                   </div>
                 </button>
               );
@@ -1326,8 +1393,8 @@ export default function Game() {
                           <span className="text-slate-300 text-sm">{record.date}</span>
                           <div className="flex gap-2 text-xs font-mono mt-1">
                             <span className="text-slate-400">[{record.level}]</span>
-                            <span className={record.result === 'Victory' ? 'text-emerald-400' : 'text-red-400'}>
-                              {record.result}
+                            <span className="text-emerald-400">
+                              {record.rank}
                             </span>
                           </div>
                         </div>
@@ -1344,34 +1411,11 @@ export default function Game() {
         </div>
       )}
 
-      {/* Victory Screen */}
-      {gameState === 'victory' && (
-        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
-          <h2 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-yellow-300 to-yellow-600 mb-2 tracking-tight">VICTORY!</h2>
-          <p className="text-emerald-400 font-mono mb-8">Level Complete Bonus: +{LEVELS[currentLevel].distanceToGoal}</p>
-          
-          <div className="bg-slate-800 p-6 rounded-2xl border border-yellow-500/50 mb-8 flex flex-col items-center min-w-[240px] shadow-[0_0_30px_rgba(234,179,8,0.2)]">
-            <span className="text-slate-400 font-mono mb-1">FINAL SCORE</span>
-            <span className="text-5xl font-bold text-white mb-4">{score}</span>
-            <div className="w-full h-px bg-slate-700 mb-4" />
-            <span className="text-slate-500 font-mono text-sm mb-1">BEST</span>
-            <span className="text-2xl font-bold text-yellow-500">{highScore}</span>
-          </div>
-          
-          <button 
-            onClick={(e) => { e.stopPropagation(); setGameState('level_select'); }}
-            className="flex items-center gap-3 bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-8 py-4 rounded-full font-bold text-xl transition-all hover:scale-105 cursor-pointer pointer-events-auto"
-          >
-            <Play className="w-6 h-6 fill-current" />
-            <span>NEXT LEVEL</span>
-          </button>
-        </div>
-      )}
-
       {/* Game Over Screen */}
       {gameState === 'gameover' && (
         <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
-          <h2 className="text-5xl font-black text-red-500 mb-4 tracking-tight">CRASHED!</h2>
+          <h2 className="text-5xl font-black text-red-500 mb-2 tracking-tight">CRASHED!</h2>
+          <p className={`text-xl font-bold font-mono mb-6 ${currentRank.color}`}>Rank: {currentRank.name}</p>
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 flex flex-col items-center min-w-[240px]">
             <span className="text-slate-400 font-mono mb-1">SCORE</span>
             <span className="text-4xl font-bold text-white mb-4">{score}</span>
@@ -1379,13 +1423,22 @@ export default function Game() {
             <span className="text-slate-500 font-mono text-sm mb-1">BEST</span>
             <span className="text-2xl font-bold text-yellow-500">{highScore}</span>
           </div>
-          <button 
-            onClick={(e) => { e.stopPropagation(); setGameState('level_select'); }}
-            className="flex items-center gap-3 bg-slate-700 hover:bg-slate-600 text-white px-8 py-4 rounded-full font-bold text-xl transition-all hover:scale-105 cursor-pointer pointer-events-auto"
-          >
-            <RotateCcw className="w-6 h-6" />
-            <span>TRY AGAIN</span>
-          </button>
+          <div className="flex gap-4 pointer-events-auto">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setGameState('level_select'); }}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+              <span>MENU</span>
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); startGame(currentLevel, true); }}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <RotateCcw className="w-5 h-5" />
+              <span>RETRY LEVEL</span>
+            </button>
+          </div>
         </div>
       )}
     </div>
