@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Hourglass } from 'lucide-react';
+import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane } from 'lucide-react';
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -338,9 +338,6 @@ export default function Game() {
   const itemIdCounter = useRef(0);
   const bulletIdCounter = useRef(0);
   
-  const lastTimeRef = useRef<number>(0);
-  const accumulatorRef = useRef<number>(0);
-  
   const powerupsRef = useRef({
     shield: 0,
     boost: 0,
@@ -414,8 +411,6 @@ export default function Game() {
     frameCountRef.current = 0;
     scoreRef.current = 0;
     speedRef.current = LEVELS[level].baseSpeed;
-    lastTimeRef.current = 0;
-    accumulatorRef.current = 0;
     powerupsRef.current = { shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 };
     setScore(0);
     setProgress(0);
@@ -463,6 +458,8 @@ export default function Game() {
     if (pUps.shield > 0) { pUps.shield--; powerupsChanged = true; }
     if (pUps.boost > 0) { pUps.boost--; powerupsChanged = true; }
     if (pUps.doubleScore > 0) { pUps.doubleScore--; powerupsChanged = true; }
+    if (pUps.star > 0) { pUps.star--; powerupsChanged = true; }
+    if (pUps.slow > 0) { pUps.slow--; powerupsChanged = true; }
     if (pUps.weapon > 0) { 
       pUps.weapon--; 
       powerupsChanged = true;
@@ -479,15 +476,13 @@ export default function Game() {
         playSound('shoot');
       }
     }
-    if (pUps.star > 0) { pUps.star--; powerupsChanged = true; }
-    if (pUps.slow > 0) { pUps.slow--; powerupsChanged = true; }
 
     if (powerupsChanged && frameCountRef.current % 10 === 0) {
       setPowerups({ ...pUps });
     }
 
     // Base speed increases slightly over time, Boost adds temporary massive speed, Slow reduces speed
-    const currentSpeed = speedRef.current + (pUps.boost > 0 ? 10 : (pUps.star > 0 ? 5 : 0)) - (pUps.slow > 0 ? 3 : 0);
+    const currentSpeed = (speedRef.current + (pUps.boost > 0 ? 10 : 0)) * (pUps.slow > 0 ? 0.5 : 1);
 
     if (frameCountRef.current % 600 === 0) {
       speedRef.current += 0.2; // Slower speed creep since we have levels
@@ -579,12 +574,12 @@ export default function Game() {
       const rand = Math.random();
       let type: ItemType = 'coin';
       
-      if (rand < 0.05) type = 'star';
-      else if (rand < 0.15) type = 'shield';
-      else if (rand < 0.25) type = 'boost';
-      else if (rand < 0.35) type = 'weapon';
+      if (rand < 0.08) type = 'shield';
+      else if (rand < 0.16) type = 'boost';
+      else if (rand < 0.24) type = 'weapon';
+      else if (rand < 0.32) type = 'star';
+      else if (rand < 0.40) type = 'slow';
       else if (rand < 0.50) type = 'double_score';
-      else if (rand < 0.60) type = 'slow';
 
       itemsRef.current.push({
         id: itemIdCounter.current++,
@@ -638,14 +633,14 @@ export default function Game() {
         player.y + player.height > obs.y
       ) {
         if (pUps.shield > 0 || pUps.boost > 0 || pUps.star > 0) {
-          // Destroy obstacle if shielded or boosting
+          // Destroy obstacle if shielded or boosting or star
           spawnParticles(obs.x + obs.width / 2, obs.y + obs.height / 2, '#ef4444', 30);
           playSound('explosion');
           obstaclesRef.current.splice(i, 1);
           scoreRef.current += (pUps.doubleScore > 0 ? 100 : 50);
           setScore(scoreRef.current);
           
-          // If only shielded (not boosting), remove shield after 1 hit
+          // If only shielded (not boosting or star), remove shield after 1 hit
           if (pUps.shield > 0 && pUps.boost <= 0 && pUps.star <= 0) {
             pUps.shield = 0;
             spawnParticles(player.x + player.width / 2, player.y + player.height / 2, '#3b82f6', 30);
@@ -694,10 +689,10 @@ export default function Game() {
             spawnParticles(item.x, item.y, '#22c55e', 30);
           } else if (item.type === 'star') {
             pUps.star = 600; // 10 seconds
-            spawnParticles(item.x, item.y, '#a855f7', 30);
+            spawnParticles(item.x, item.y, '#fcd34d', 30);
           } else if (item.type === 'slow') {
             pUps.slow = 300; // 5 seconds
-            spawnParticles(item.x, item.y, '#10b981', 30);
+            spawnParticles(item.x, item.y, '#c084fc', 30);
           }
           setPowerups({ ...pUps });
         }
@@ -756,7 +751,7 @@ export default function Game() {
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Grid lines for speed illusion
-    const currentSpeed = speedRef.current + (powerupsRef.current.boost > 0 ? 10 : 0) - (powerupsRef.current.slow > 0 ? 3 : 0);
+    const currentSpeed = (speedRef.current + (powerupsRef.current.boost > 0 ? 10 : 0)) * (powerupsRef.current.slow > 0 ? 0.5 : 1);
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 2;
     const offset = (frameCountRef.current * currentSpeed) % 100;
@@ -857,11 +852,11 @@ export default function Game() {
         ctx.fillStyle = '#22c55e';
         ctx.shadowColor = '#22c55e';
       } else if (item.type === 'star') {
-        ctx.fillStyle = `hsl(${(frameCountRef.current * 5) % 360}, 100%, 50%)`;
-        ctx.shadowColor = '#a855f7';
+        ctx.fillStyle = '#fcd34d';
+        ctx.shadowColor = '#fcd34d';
       } else if (item.type === 'slow') {
-        ctx.fillStyle = '#10b981';
-        ctx.shadowColor = '#10b981';
+        ctx.fillStyle = '#c084fc';
+        ctx.shadowColor = '#c084fc';
       }
       
       ctx.shadowBlur = 15;
@@ -884,7 +879,7 @@ export default function Game() {
       if (item.type === 'double_score') ctx.fillText('2x', item.x, item.y);
       if (item.type === 'weapon') ctx.fillText('W', item.x, item.y);
       if (item.type === 'star') ctx.fillText('★', item.x, item.y);
-      if (item.type === 'slow') ctx.fillText('Sl', item.x, item.y);
+      if (item.type === 'slow') ctx.fillText('⏱', item.x, item.y);
     });
 
     // Player
@@ -901,9 +896,10 @@ export default function Game() {
       // Player body color based on powerups
       let shipColor = shipConfig.baseColor;
       if (pUps.star > 0) {
-        shipColor = `hsl(${(frameCountRef.current * 10) % 360}, 100%, 60%)`;
+        const hue = (frameCountRef.current * 10) % 360;
+        shipColor = `hsl(${hue}, 100%, 50%)`;
         ctx.shadowColor = shipColor;
-        ctx.shadowBlur = 25;
+        ctx.shadowBlur = 20;
       } else if (pUps.boost > 0) {
         shipColor = '#f97316';
         ctx.shadowColor = '#f97316';
@@ -915,10 +911,6 @@ export default function Game() {
       } else if (pUps.weapon > 0) {
         shipColor = '#22c55e';
         ctx.shadowColor = '#22c55e';
-        ctx.shadowBlur = 15;
-      } else if (pUps.slow > 0) {
-        shipColor = '#10b981';
-        ctx.shadowColor = '#10b981';
         ctx.shadowBlur = 15;
       } else {
         ctx.shadowColor = shipColor;
@@ -952,21 +944,8 @@ export default function Game() {
 
   }, [gameState, currentLevel, currentShip]);
 
-  const loop = useCallback((time: number) => {
-    if (!lastTimeRef.current) lastTimeRef.current = time;
-    const dt = time - lastTimeRef.current;
-    lastTimeRef.current = time;
-
-    // Cap dt to avoid spiral of death if tab is inactive
-    accumulatorRef.current += Math.min(dt, 100);
-
-    const TIME_STEP = 1000 / 60; // 60 FPS fixed step
-
-    while (accumulatorRef.current >= TIME_STEP) {
-      update();
-      accumulatorRef.current -= TIME_STEP;
-    }
-
+  const loop = useCallback(() => {
+    update();
     draw();
     requestRef.current = requestAnimationFrame(loop);
   }, [update, draw]);
@@ -1123,15 +1102,15 @@ export default function Game() {
                 </div>
               )}
               {powerups.star > 0 && (
-                <div className="bg-purple-500/20 px-3 py-2 rounded-lg border border-purple-500/50 flex items-center gap-2 animate-pulse">
-                  <Star className="w-5 h-5 text-purple-400" />
-                  <span className="text-purple-300 font-mono text-sm">{Math.ceil(powerups.star / 60)}s</span>
+                <div className="bg-yellow-300/20 px-3 py-2 rounded-lg border border-yellow-300/50 flex items-center gap-2 animate-pulse">
+                  <Star className="w-5 h-5 text-yellow-300" />
+                  <span className="text-yellow-200 font-mono text-sm">{Math.ceil(powerups.star / 60)}s</span>
                 </div>
               )}
               {powerups.slow > 0 && (
-                <div className="bg-emerald-500/20 px-3 py-2 rounded-lg border border-emerald-500/50 flex items-center gap-2 animate-pulse">
-                  <Hourglass className="w-5 h-5 text-emerald-400" />
-                  <span className="text-emerald-300 font-mono text-sm">{Math.ceil(powerups.slow / 60)}s</span>
+                <div className="bg-purple-500/20 px-3 py-2 rounded-lg border border-purple-500/50 flex items-center gap-2 animate-pulse">
+                  <History className="w-5 h-5 text-purple-400" />
+                  <span className="text-purple-300 font-mono text-sm">{Math.ceil(powerups.slow / 60)}s</span>
                 </div>
               )}
             </div>
@@ -1178,7 +1157,7 @@ export default function Game() {
                 <Shield className="w-6 h-6 text-blue-400" />
               </div>
               <div>
-                <div className="text-white font-bold">Shield (10%)</div>
+                <div className="text-white font-bold">Shield (8%)</div>
                 <div className="text-slate-400 text-sm">Invincible for 10s</div>
               </div>
             </div>
@@ -1187,7 +1166,7 @@ export default function Game() {
                 <Zap className="w-6 h-6 text-orange-400" />
               </div>
               <div>
-                <div className="text-white font-bold">Boost (10%)</div>
+                <div className="text-white font-bold">Boost (8%)</div>
                 <div className="text-slate-400 text-sm">Extreme speed for 5s</div>
               </div>
             </div>
@@ -1196,7 +1175,7 @@ export default function Game() {
                 <Star className="w-6 h-6 text-yellow-400" />
               </div>
               <div>
-                <div className="text-white font-bold">Double Score (15%)</div>
+                <div className="text-white font-bold">Double Score (10%)</div>
                 <div className="text-slate-400 text-sm">2x Points for 10s</div>
               </div>
             </div>
@@ -1205,26 +1184,26 @@ export default function Game() {
                 <Crosshair className="w-6 h-6 text-green-400" />
               </div>
               <div>
-                <div className="text-white font-bold">Weapon (10%)</div>
+                <div className="text-white font-bold">Weapon (8%)</div>
                 <div className="text-slate-400 text-sm">Auto-shoot for 8s</div>
               </div>
             </div>
             <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
-              <div className="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
-                <Star className="w-6 h-6 text-purple-400" />
+              <div className="w-12 h-12 rounded-full bg-yellow-300/20 border-2 border-yellow-300 flex items-center justify-center">
+                <Star className="w-6 h-6 text-yellow-300" />
               </div>
               <div>
-                <div className="text-white font-bold">Star (5%)</div>
-                <div className="text-slate-400 text-sm">Invincible & Rainbow for 10s</div>
+                <div className="text-white font-bold">Star (8%)</div>
+                <div className="text-slate-400 text-sm">Invincible & destroys all for 10s</div>
               </div>
             </div>
             <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center">
-                <Hourglass className="w-6 h-6 text-emerald-400" />
+              <div className="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
+                <History className="w-6 h-6 text-purple-400" />
               </div>
               <div>
-                <div className="text-white font-bold">Slow (10%)</div>
-                <div className="text-slate-400 text-sm">Slows game speed for 5s</div>
+                <div className="text-white font-bold">Slow (8%)</div>
+                <div className="text-slate-400 text-sm">Slows time for 5s</div>
               </div>
             </div>
           </div>
