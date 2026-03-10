@@ -1513,8 +1513,11 @@ export default function Game() {
       {/* Game Over Screen */}
       {gameState === 'gameover' && (
         <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
-          <h2 className="text-5xl font-black text-red-500 mb-2 tracking-tight">CRASHED!</h2>
-          <p className={`text-xl font-bold font-mono mb-6 ${currentRank.color}`}>Rank: {currentRank.name}</p>
+          <h2 className="text-5xl font-black text-red-500 mb-4 tracking-tight">CRASHED!</h2>
+          <div className="flex flex-col items-center mb-6">
+            <Trophy className={`w-16 h-16 mb-2 ${currentRank.color} drop-shadow-lg`} />
+            <p className={`text-2xl font-bold font-mono ${currentRank.color}`}>Rank: {currentRank.name}</p>
+          </div>
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 flex flex-col items-center min-w-[240px]">
             <span className="text-slate-400 font-mono mb-1">SCORE</span>
             <span className="text-4xl font-bold text-white mb-4">{score}</span>
