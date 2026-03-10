@@ -360,6 +360,9 @@ export default function Game() {
 
   const currentSeedRef = useRef<number>(Math.random());
   const rngRef = useRef<SeededRandom>(new SeededRandom(currentSeedRef.current));
+  const isPlayingRef = useRef(false);
+  const lastTimeRef = useRef<number>(0);
+  const accumulatorRef = useRef<number>(0);
 
   // Load history and ship on mount
   useEffect(() => {
@@ -461,7 +464,10 @@ export default function Game() {
     setScore(0);
     setProgress(0);
     setPowerups({ shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 });
+    isPlayingRef.current = true;
     setGameState('playing');
+    lastTimeRef.current = performance.now();
+    accumulatorRef.current = 0;
   };
 
   const spawnParticles = (x: number, y: number, color: string, count: number) => {
@@ -480,7 +486,7 @@ export default function Game() {
   };
 
   const update = useCallback(() => {
-    if (gameState !== 'playing') return;
+    if (!isPlayingRef.current) return;
 
     const player = playerRef.current;
     const pUps = powerupsRef.current;
@@ -775,10 +781,11 @@ export default function Game() {
       }
     }
 
-  }, [gameState, currentLevel]);
+  }, [currentLevel]);
 
   const gameOver = () => {
     playSound('crash');
+    isPlayingRef.current = false;
     setGameState('gameover');
     saveScore(scoreRef.current);
     setHighScore(prev => Math.max(prev, scoreRef.current));
@@ -982,8 +989,23 @@ export default function Game() {
 
   }, [gameState, currentLevel, currentShip]);
 
-  const loop = useCallback(() => {
-    update();
+  const loop = useCallback((time: number) => {
+    if (lastTimeRef.current === 0) {
+      lastTimeRef.current = time;
+    }
+    const deltaTime = time - lastTimeRef.current;
+    lastTimeRef.current = time;
+
+    // Cap deltaTime to avoid spiral of death if tab is inactive
+    accumulatorRef.current += Math.min(deltaTime, 100);
+
+    const TIME_STEP = 1000 / 60; // 60 FPS fixed time step
+
+    while (accumulatorRef.current >= TIME_STEP) {
+      update();
+      accumulatorRef.current -= TIME_STEP;
+    }
+
     draw();
     requestRef.current = requestAnimationFrame(loop);
   }, [update, draw]);
