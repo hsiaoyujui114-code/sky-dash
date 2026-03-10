@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket } from 'lucide-react';
+import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit } from 'lucide-react';
 
 class SeededRandom {
   private seed: number;
@@ -20,7 +20,7 @@ const MAX_FALL_SPEED = 10;
 const MAX_RISE_SPEED = -8;
 
 type GameState = 'start' | 'playing' | 'gameover' | 'history' | 'level_select' | 'ship_select';
-type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile';
+type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
 type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky';
 
@@ -364,6 +364,9 @@ export default function Game() {
   const lastTimeRef = useRef<number>(0);
   const accumulatorRef = useRef<number>(0);
 
+  const yHistoryRef = useRef<number[]>([]);
+  const teleportAnimRef = useRef({ active: false, timer: 0, x: 0, y: 0, targetY: 0 });
+
   // Load history and ship on mount
   useEffect(() => {
     const savedHistory = localStorage.getItem('skyDashHistoryV2');
@@ -443,6 +446,9 @@ export default function Game() {
       currentSeedRef.current = Math.random();
     }
     rngRef.current = new SeededRandom(currentSeedRef.current);
+    
+    yHistoryRef.current = [];
+    teleportAnimRef.current = { active: false, timer: 0, x: 0, y: 0, targetY: 0 };
     
     setCurrentLevel(level);
     isThrusting.current = false;
@@ -538,6 +544,10 @@ export default function Game() {
     if (frameCountRef.current % 10 === 0) {
       scoreRef.current += (pUps.doubleScore > 0 ? 2 : 1);
       setScore(scoreRef.current);
+      yHistoryRef.current.push(player.y);
+      if (yHistoryRef.current.length > 100) {
+        yHistoryRef.current.shift();
+      }
     }
 
     // Player movement
@@ -624,7 +634,8 @@ export default function Game() {
       else if (rand < 0.32) type = 'star';
       else if (rand < 0.40) type = 'slow';
       else if (rand < 0.48) type = 'missile';
-      else if (rand < 0.58) type = 'double_score';
+      else if (rand < 0.56) type = 'portal';
+      else if (rand < 0.66) type = 'double_score';
 
       itemsRef.current.push({
         id: itemIdCounter.current++,
@@ -736,6 +747,19 @@ export default function Game() {
             type: 'missile'
           });
           spawnParticles(item.x, item.y, '#ef4444', 30);
+        } else if (item.type === 'portal') {
+          playSound('powerup');
+          let newY = player.y;
+          if (Math.random() < 0.6 && yHistoryRef.current.length > 0) {
+            const randomIndex = Math.floor(Math.random() * yHistoryRef.current.length);
+            newY = yHistoryRef.current[randomIndex];
+          } else {
+            newY = Math.random() * (CANVAS_HEIGHT - player.height);
+          }
+          teleportAnimRef.current = { active: true, timer: 0, x: player.x + player.width/2, y: player.y + player.height/2, targetY: newY + player.height/2 };
+          player.y = newY;
+          player.vy = 0;
+          spawnParticles(item.x, item.y, '#a855f7', 30);
         } else {
           playSound('powerup');
           if (item.type === 'shield') {
@@ -778,6 +802,13 @@ export default function Game() {
       p.life++;
       if (p.life >= p.maxLife) {
         particlesRef.current.splice(i, 1);
+      }
+    }
+
+    if (teleportAnimRef.current.active) {
+      teleportAnimRef.current.timer++;
+      if (teleportAnimRef.current.timer > 30) {
+        teleportAnimRef.current.active = false;
       }
     }
 
@@ -901,6 +932,9 @@ export default function Game() {
       } else if (item.type === 'missile') {
         ctx.fillStyle = '#ef4444';
         ctx.shadowColor = '#ef4444';
+      } else if (item.type === 'portal') {
+        ctx.fillStyle = '#a855f7';
+        ctx.shadowColor = '#a855f7';
       }
       
       ctx.shadowBlur = 15;
@@ -925,6 +959,7 @@ export default function Game() {
       if (item.type === 'star') ctx.fillText('★', item.x, item.y);
       if (item.type === 'slow') ctx.fillText('⏱', item.x, item.y);
       if (item.type === 'missile') ctx.fillText('M', item.x, item.y);
+      if (item.type === 'portal') ctx.fillText('O', item.x, item.y);
     });
 
     // Player
@@ -985,6 +1020,39 @@ export default function Game() {
         ctx.font = 'bold 20px Arial';
         ctx.fillText('GET READY!', player.x + player.width / 2, player.y - 20);
       }
+    }
+
+    // Draw teleport animation
+    if (teleportAnimRef.current.active) {
+      const { timer, x, y, targetY } = teleportAnimRef.current;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      
+      if (timer < 15) {
+        const radius = 50 * (1 - timer / 15);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(168, 85, 247, ${1 - timer/15})`;
+        ctx.fill();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = '#d8b4fe';
+        ctx.stroke();
+      }
+      
+      if (timer > 5) {
+        const expandTimer = timer - 5;
+        const radius = 50 * Math.sin((expandTimer / 25) * Math.PI);
+        if (radius > 0) {
+          ctx.beginPath();
+          ctx.arc(x, targetY, radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(168, 85, 247, ${1 - Math.abs(expandTimer - 12.5)/12.5})`;
+          ctx.fill();
+          ctx.lineWidth = 5;
+          ctx.strokeStyle = '#d8b4fe';
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
     }
 
   }, [gameState, currentLevel, currentShip]);
@@ -1293,6 +1361,15 @@ export default function Game() {
               <div>
                 <div className="text-white font-bold">Missile (8%)</div>
                 <div className="text-slate-400 text-sm">Fires a missile, +200 pts on hit</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
+              <div className="w-12 h-12 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center">
+                <Orbit className="w-6 h-6 text-purple-400" />
+              </div>
+              <div>
+                <div className="text-white font-bold">Portal (8%)</div>
+                <div className="text-slate-400 text-sm">Teleports you anywhere</div>
               </div>
             </div>
           </div>
