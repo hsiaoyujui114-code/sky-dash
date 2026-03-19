@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit } from 'lucide-react';
+import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit, Users } from 'lucide-react';
+import { io, Socket } from 'socket.io-client';
 
 class SeededRandom {
   private seed: number;
@@ -18,10 +19,11 @@ const GRAVITY = 0.5;
 const THRUST = -1.2;
 const MAX_FALL_SPEED = 10;
 const MAX_RISE_SPEED = -8;
+const MULTIPLAYER_GOAL = 10000;
 
-type GameState = 'start' | 'playing' | 'gameover' | 'history' | 'level_select' | 'ship_select';
-type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal';
-type Difficulty = 'easy' | 'medium' | 'hard' | 'expert';
+type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
+type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
+type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'dungeon';
 type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky';
 
 interface LevelConfig {
@@ -37,6 +39,7 @@ const LEVELS: Record<Difficulty, LevelConfig> = {
   medium: { id: 'medium', name: 'Medium', baseSpeed: 6, obstacleFrequency: 45, color: 'text-yellow-400' },
   hard: { id: 'hard', name: 'Hard', baseSpeed: 8, obstacleFrequency: 30, color: 'text-orange-400' },
   expert: { id: 'expert', name: 'Expert', baseSpeed: 10, obstacleFrequency: 20, color: 'text-red-500' },
+  dungeon: { id: 'dungeon', name: 'CSIE Dungeon', baseSpeed: 7, obstacleFrequency: 25, color: 'text-purple-500' },
 };
 
 interface ShipConfig {
@@ -316,6 +319,17 @@ export default function Game() {
   const [currentShip, setCurrentShip] = useState<ShipType>('classic');
   const [progress, setProgress] = useState(0); // 0 to 100
   
+  // Multiplayer state
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const [roomId, setRoomId] = useState('');
+  const roomIdRef = useRef('');
+  const [playerName, setPlayerName] = useState('');
+  const [roomState, setRoomState] = useState<any>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [multiplayerWinner, setMultiplayerWinner] = useState<string | null>(null);
+  const otherPlayersRef = useRef<Record<string, any>>({});
+  
   // Powerup timers (in frames, 60fps)
   const [powerups, setPowerups] = useState({
     shield: 0,
@@ -344,6 +358,7 @@ export default function Game() {
   
   const frameCountRef = useRef(0);
   const scoreRef = useRef(0);
+  const trophiesRef = useRef(0);
   const speedRef = useRef(LEVELS['easy'].baseSpeed);
   const obstacleIdCounter = useRef(0);
   const itemIdCounter = useRef(0);
@@ -367,7 +382,59 @@ export default function Game() {
   const yHistoryRef = useRef<number[]>([]);
   const teleportAnimRef = useRef({ active: false, timer: 0, x: 0, y: 0, targetY: 0 });
 
+  const startGameRef = useRef<any>(null);
+
   // Load history and ship on mount
+  useEffect(() => {
+    const newSocket = io();
+    setSocket(newSocket);
+    socketRef.current = newSocket;
+
+    newSocket.on("room_state", (state) => {
+      setRoomState(state);
+      otherPlayersRef.current = state.players;
+    });
+
+    newSocket.on("game_started", ({ startTime }) => {
+      setGameState('multiplayer_playing');
+      const now = Date.now();
+      if (startTime > now) {
+        setCountdown(Math.ceil((startTime - now) / 1000));
+        const interval = setInterval(() => {
+          const currentNow = Date.now();
+          if (startTime > currentNow) {
+            setCountdown(Math.ceil((startTime - currentNow) / 1000));
+          } else {
+            setCountdown(null);
+            clearInterval(interval);
+            if (startGameRef.current) startGameRef.current('medium', true, true);
+          }
+        }, 100);
+      } else {
+        setCountdown(null);
+        if (startGameRef.current) startGameRef.current('medium', true, true);
+      }
+    });
+
+    newSocket.on("player_updated", (playerData) => {
+      otherPlayersRef.current[playerData.id] = {
+        ...otherPlayersRef.current[playerData.id],
+        ...playerData
+      };
+    });
+
+    newSocket.on("game_over", ({ winner, players }) => {
+      isPlayingRef.current = false;
+      setMultiplayerWinner(winner);
+      setGameState('multiplayer_gameover');
+      otherPlayersRef.current = players;
+    });
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
   useEffect(() => {
     const savedHistory = localStorage.getItem('skyDashHistoryV2');
     if (savedHistory) {
@@ -441,7 +508,7 @@ export default function Game() {
     });
   };
 
-  const startGame = (level: Difficulty, keepSeed: boolean = false) => {
+  const startGame = (level: Difficulty, keepSeed: boolean = false, isMultiplayer: boolean = false) => {
     if (!keepSeed) {
       currentSeedRef.current = Math.random();
     }
@@ -465,16 +532,21 @@ export default function Game() {
     bulletsRef.current = [];
     frameCountRef.current = 0;
     scoreRef.current = 0;
+    trophiesRef.current = 0;
     speedRef.current = LEVELS[level].baseSpeed;
     powerupsRef.current = { shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 };
     setScore(0);
     setProgress(0);
     setPowerups({ shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 0, slow: 0 });
     isPlayingRef.current = true;
-    setGameState('playing');
+    setGameState(isMultiplayer ? 'multiplayer_playing' : 'playing');
     lastTimeRef.current = performance.now();
     accumulatorRef.current = 0;
   };
+
+  useEffect(() => {
+    startGameRef.current = startGame;
+  }, [startGame]);
 
   const spawnParticles = (x: number, y: number, color: string, count: number) => {
     for (let i = 0; i < count; i++) {
@@ -636,6 +708,7 @@ export default function Game() {
       else if (rand < 0.48) type = 'missile';
       else if (rand < 0.56) type = 'portal';
       else if (rand < 0.66) type = 'double_score';
+      else if (rand < 0.76) type = 'trophy';
 
       itemsRef.current.push({
         id: itemIdCounter.current++,
@@ -735,6 +808,11 @@ export default function Game() {
           scoreRef.current += (pUps.doubleScore > 0 ? 200 : 100);
           spawnParticles(item.x, item.y, '#eab308', 15);
           playSound('coin');
+        } else if (item.type === 'trophy') {
+          trophiesRef.current += 1;
+          scoreRef.current += (pUps.doubleScore > 0 ? 2000 : 1000);
+          spawnParticles(item.x, item.y, '#fbbf24', 30);
+          playSound('powerup');
         } else if (item.type === 'missile') {
           playSound('shoot');
           bulletsRef.current.push({
@@ -812,6 +890,20 @@ export default function Game() {
       }
     }
 
+    // Multiplayer emit
+    if (socketRef.current && roomIdRef.current && frameCountRef.current % 3 === 0) {
+      socketRef.current.emit("update_state", {
+        roomId: roomIdRef.current,
+        progress: scoreRef.current,
+        y: player.y,
+        trophies: trophiesRef.current
+      });
+    }
+
+    // Dungeon victory condition
+    if (currentLevel === 'dungeon' && scoreRef.current >= 10000) {
+      victory();
+    }
   }, [currentLevel]);
 
   const gameOver = () => {
@@ -823,6 +915,15 @@ export default function Game() {
     spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#ef4444', 50);
   };
 
+  const victory = () => {
+    playSound('victory');
+    isPlayingRef.current = false;
+    setGameState('victory');
+    saveScore(scoreRef.current);
+    setHighScore(prev => Math.max(prev, scoreRef.current));
+    spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#10b981', 100);
+  };
+
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -830,12 +931,20 @@ export default function Game() {
     if (!ctx) return;
 
     // Background
-    ctx.fillStyle = '#0f172a';
+    if (currentLevel === 'dungeon') {
+      ctx.fillStyle = '#1e1b4b'; // Dark purple background for dungeon
+    } else {
+      ctx.fillStyle = '#0f172a';
+    }
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Grid lines for speed illusion
     const currentSpeed = (speedRef.current + (powerupsRef.current.boost > 0 ? 10 : 0)) * (powerupsRef.current.slow > 0 ? 0.5 : 1);
-    ctx.strokeStyle = '#1e293b';
+    if (currentLevel === 'dungeon') {
+      ctx.strokeStyle = '#312e81'; // Purple grid lines
+    } else {
+      ctx.strokeStyle = '#1e293b';
+    }
     ctx.lineWidth = 2;
     const offset = (frameCountRef.current * currentSpeed) % 100;
     for (let i = -offset; i < CANVAS_WIDTH; i += 100) {
@@ -892,12 +1001,27 @@ export default function Game() {
 
     // Obstacles
     obstaclesRef.current.forEach(obs => {
-      ctx.fillStyle = '#ef4444';
-      ctx.shadowColor = '#ef4444';
-      ctx.shadowBlur = 10;
-      ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-      ctx.fillStyle = '#b91c1c';
-      ctx.fillRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10);
+      if (currentLevel === 'dungeon') {
+        // Dungeon obstacles (e.g., stone pillars or magical barriers)
+        ctx.fillStyle = '#4c1d95'; // Deep purple
+        ctx.shadowColor = '#6d28d9';
+        ctx.shadowBlur = 15;
+        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        ctx.fillStyle = '#2e1065';
+        ctx.fillRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10);
+        
+        // Add some "runes" or details
+        ctx.fillStyle = '#a78bfa';
+        ctx.font = '16px monospace';
+        ctx.fillText('CSIE', obs.x + obs.width / 2 - 18, obs.y + obs.height / 2);
+      } else {
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 10;
+        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10);
+      }
       ctx.shadowBlur = 0;
     });
 
@@ -935,6 +1059,9 @@ export default function Game() {
       } else if (item.type === 'portal') {
         ctx.fillStyle = '#a855f7';
         ctx.shadowColor = '#a855f7';
+      } else if (item.type === 'trophy') {
+        ctx.fillStyle = '#fbbf24';
+        ctx.shadowColor = '#fbbf24';
       }
       
       ctx.shadowBlur = 15;
@@ -960,7 +1087,70 @@ export default function Game() {
       if (item.type === 'slow') ctx.fillText('⏱', item.x, item.y);
       if (item.type === 'missile') ctx.fillText('M', item.x, item.y);
       if (item.type === 'portal') ctx.fillText('O', item.x, item.y);
+      if (item.type === 'trophy') ctx.fillText('🏆', item.x, item.y);
     });
+
+    // Finish Line (Multiplayer & Dungeon)
+    const isMultiplayer = gameState === 'multiplayer_playing' || gameState === 'multiplayer_gameover';
+    const isDungeon = currentLevel === 'dungeon' && (gameState === 'playing' || gameState === 'victory' || gameState === 'gameover');
+    
+    if (isMultiplayer || isDungeon) {
+      const goal = isMultiplayer ? MULTIPLAYER_GOAL : 10000;
+      const finishLineX = playerRef.current.x + (goal - scoreRef.current);
+      if (finishLineX > -100 && finishLineX < CANVAS_WIDTH + 100) {
+        ctx.save();
+        const squareSize = 20;
+        for (let y = 0; y < CANVAS_HEIGHT; y += squareSize) {
+          ctx.fillStyle = (Math.floor(y / squareSize) % 2 === 0) ? '#fff' : '#000';
+          ctx.fillRect(finishLineX, y, squareSize, squareSize);
+          ctx.fillStyle = (Math.floor(y / squareSize) % 2 === 0) ? '#000' : '#fff';
+          ctx.fillRect(finishLineX + squareSize, y, squareSize, squareSize);
+        }
+        ctx.fillStyle = '#FFD700';
+        ctx.font = 'bold 24px monospace';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText('FINISH', finishLineX + squareSize, 40);
+        ctx.restore();
+      }
+    }
+
+    // Other Players (Multiplayer)
+    if (socketRef.current && roomIdRef.current) {
+      Object.values(otherPlayersRef.current).forEach((p: any) => {
+        if (p.id === socketRef.current?.id) return;
+        
+        // Calculate relative X position based on progress difference
+        const progressDiff = p.progress - scoreRef.current;
+        // Scale difference so it fits on screen (e.g., 1 progress = 1 pixel)
+        const relativeX = playerRef.current.x + progressDiff;
+        
+        if (relativeX > -50 && relativeX < CANVAS_WIDTH + 50) {
+          ctx.save();
+          ctx.translate(relativeX + playerRef.current.width / 2, p.y + playerRef.current.height / 2);
+          ctx.globalAlpha = 0.5; // Ghost effect
+          
+          // Draw a simple ship for other players
+          ctx.fillStyle = p.color || '#4285F4';
+          ctx.beginPath();
+          ctx.moveTo(playerRef.current.width / 2, 0);
+          ctx.lineTo(-playerRef.current.width / 2, playerRef.current.height / 2);
+          ctx.lineTo(-playerRef.current.width / 4, 0);
+          ctx.lineTo(-playerRef.current.width / 2, -playerRef.current.height / 2);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Name tag
+          ctx.fillStyle = '#fff';
+          ctx.font = '10px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.name, 0, -playerRef.current.height);
+          
+          ctx.restore();
+        }
+      });
+    }
 
     // Player
     const player = playerRef.current;
@@ -1091,7 +1281,7 @@ export default function Game() {
         e.preventDefault();
         if (gameState === 'start') {
           setGameState('level_select');
-        } else if (gameState === 'gameover') {
+        } else if (gameState === 'gameover' || gameState === 'victory') {
           startGame(currentLevel, true);
         } else if (gameState === 'playing') {
           isThrusting.current = true;
@@ -1117,7 +1307,7 @@ export default function Game() {
   const handlePointerDown = () => {
     if (gameState === 'start') {
       setGameState('level_select');
-    } else if (gameState === 'gameover') {
+    } else if (gameState === 'gameover' || gameState === 'victory') {
       startGame(currentLevel, true);
     } else if (gameState === 'playing') {
       isThrusting.current = true;
@@ -1283,6 +1473,13 @@ export default function Game() {
           </h1>
           
           <div className="absolute top-6 right-6 flex gap-3">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setGameState('multiplayer_lobby'); }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg border border-indigo-400 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-bold">Multiplayer</span>
+            </button>
             <button 
               onClick={(e) => { e.stopPropagation(); setGameState('ship_select'); }}
               className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 flex items-center gap-2 transition-colors cursor-pointer"
@@ -1511,6 +1708,39 @@ export default function Game() {
       )}
 
       {/* Game Over Screen */}
+      {gameState === 'victory' && (
+        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
+          <h2 className="text-5xl font-black text-emerald-400 mb-4 tracking-tight drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">DUNGEON CLEARED!</h2>
+          <div className="flex flex-col items-center mb-6">
+            <Trophy className={`w-16 h-16 mb-2 text-yellow-400 drop-shadow-lg`} />
+            <p className={`text-2xl font-bold font-mono text-yellow-400`}>Legendary</p>
+          </div>
+          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 flex flex-col items-center min-w-[240px]">
+            <span className="text-slate-400 font-mono mb-1">SCORE</span>
+            <span className="text-4xl font-bold text-white mb-4">{score}</span>
+            <div className="w-full h-px bg-slate-700 mb-4" />
+            <span className="text-slate-500 font-mono text-sm mb-1">BEST</span>
+            <span className="text-2xl font-bold text-yellow-500">{highScore}</span>
+          </div>
+          <div className="flex gap-4 pointer-events-auto">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setGameState('level_select'); }}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+              <span>MENU</span>
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); startGame(currentLevel, true); }}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <RotateCcw className="w-5 h-5" />
+              <span>PLAY AGAIN</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {gameState === 'gameover' && (
         <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
           <h2 className="text-5xl font-black text-red-500 mb-4 tracking-tight">CRASHED!</h2>
@@ -1539,6 +1769,161 @@ export default function Game() {
             >
               <RotateCcw className="w-5 h-5" />
               <span>RETRY LEVEL</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Lobby */}
+      {gameState === 'multiplayer_lobby' && (
+        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-8">
+          <div className="bg-slate-800 w-full max-w-md rounded-2xl border border-slate-700 overflow-hidden flex flex-col pointer-events-auto">
+            <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+              <div className="flex items-center gap-3">
+                <Users className="w-6 h-6 text-indigo-400" />
+                <h2 className="text-2xl font-black text-white tracking-tight">MULTIPLAYER</h2>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setGameState('start'); }}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              {!roomState ? (
+                <>
+                  <div>
+                    <label className="block text-slate-400 text-sm font-bold mb-2">Player Name</label>
+                    <input 
+                      type="text" 
+                      value={playerName} 
+                      onChange={(e) => setPlayerName(e.target.value)} 
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+                      placeholder="Enter your name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-slate-400 text-sm font-bold mb-2">Room ID</label>
+                    <input 
+                      type="text" 
+                      value={roomId} 
+                      onChange={(e) => { setRoomId(e.target.value); roomIdRef.current = e.target.value; }} 
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+                      placeholder="Enter room ID to join or create"
+                    />
+                  </div>
+                  <button 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      if (roomId && playerName && socketRef.current) {
+                        socketRef.current.emit("join_room", { roomId, name: playerName, color: SHIPS[currentShip].baseColor });
+                      }
+                    }}
+                    disabled={!roomId || !playerName}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-6 py-4 rounded-xl font-bold transition-all cursor-pointer mt-2"
+                  >
+                    JOIN ROOM
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+                    <h3 className="text-slate-400 text-sm font-bold mb-3">Players in Room: {roomId}</h3>
+                    <div className="flex flex-col gap-2">
+                      {Object.values(roomState.players).map((p: any) => (
+                        <div key={p.id} className="flex items-center gap-3 bg-slate-800 p-2 rounded-lg">
+                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: p.color }}></div>
+                          <span className="text-white font-bold">{p.name} {p.id === socketRef.current?.id ? '(You)' : ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={(e) => { 
+                      e.stopPropagation(); 
+                      if (socketRef.current) {
+                        socketRef.current.emit("start_game", roomId);
+                      }
+                    }}
+                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-4 rounded-xl font-black transition-all cursor-pointer mt-2"
+                  >
+                    START RACE
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Countdown */}
+      {gameState === 'multiplayer_playing' && countdown !== null && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+          <span className="text-9xl font-black text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.5)] animate-pulse">
+            {countdown > 0 ? countdown : 'GO!'}
+          </span>
+        </div>
+      )}
+
+      {/* Multiplayer HUD */}
+      {gameState === 'multiplayer_playing' && (
+        <div className="absolute top-0 right-0 p-6 flex flex-col gap-2 pointer-events-none items-end">
+          <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex flex-col gap-1 min-w-[200px]">
+            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Race Progress</span>
+            {Object.values(otherPlayersRef.current).map((p: any) => (
+              <div key={p.id} className="flex flex-col gap-1">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-white font-bold truncate max-w-[100px]">{p.name}</span>
+                  <span className="text-slate-300 font-mono">{Math.floor((p.progress / MULTIPLAYER_GOAL) * 100)}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full rounded-full transition-all duration-300" 
+                    style={{ width: `${Math.min(100, (p.progress / MULTIPLAYER_GOAL) * 100)}%`, backgroundColor: p.color }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Game Over */}
+      {gameState === 'multiplayer_gameover' && (
+        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
+          <h2 className="text-5xl font-black text-yellow-500 mb-2 tracking-tight">RACE FINISHED!</h2>
+          <p className="text-xl text-white mb-8">
+            {multiplayerWinner === socketRef.current?.id ? 'You won the race!' : `${otherPlayersRef.current[multiplayerWinner || '']?.name || 'Someone'} won the race!`}
+          </p>
+          
+          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 flex flex-col gap-4 min-w-[300px]">
+            <h3 className="text-slate-400 font-bold text-sm uppercase tracking-wider border-b border-slate-700 pb-2">Final Standings</h3>
+            {Object.values(otherPlayersRef.current)
+              .sort((a: any, b: any) => (b.progress + b.trophies * 1000) - (a.progress + a.trophies * 1000))
+              .map((p: any, index: number) => (
+              <div key={p.id} className={`flex justify-between items-center p-3 rounded-lg ${p.id === multiplayerWinner ? 'bg-yellow-500/20 border border-yellow-500/50' : 'bg-slate-900/50'}`}>
+                <div className="flex items-center gap-3">
+                  <span className={`font-black ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-slate-300' : index === 2 ? 'text-orange-600' : 'text-slate-500'}`}>
+                    #{index + 1}
+                  </span>
+                  <span className="text-white font-bold">{p.name}</span>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-emerald-400 font-mono font-bold">{Math.floor(p.progress)}</span>
+                  <span className="text-yellow-500 text-xs font-mono flex items-center gap-1"><Trophy className="w-3 h-3"/> {p.trophies}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flex gap-4 pointer-events-auto">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setGameState('start'); setRoomState(null); }}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+              <span>LEAVE ROOM</span>
             </button>
           </div>
         </div>
