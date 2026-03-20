@@ -4,8 +4,6 @@ import path from "path";
 import { createServer } from "http";
 import { Server } from "socket.io";
 
-const MULTIPLAYER_GOAL = 10000; // Distance to win
-
 interface Player {
   id: string;
   name: string;
@@ -22,6 +20,7 @@ interface Room {
   status: 'waiting' | 'playing' | 'finished';
   winner?: string;
   startTime?: number;
+  goal: number;
 }
 
 const rooms: Record<string, Room> = {};
@@ -52,7 +51,8 @@ async function startServer() {
         rooms[roomId] = {
           id: roomId,
           players: {},
-          status: 'waiting'
+          status: 'waiting',
+          goal: 5000
         };
       }
 
@@ -67,6 +67,13 @@ async function startServer() {
       };
 
       io.to(roomId).emit("room_state", rooms[roomId]);
+    });
+
+    socket.on("update_room_settings", ({ roomId, goal }) => {
+      if (rooms[roomId] && rooms[roomId].status === 'waiting') {
+        rooms[roomId].goal = goal;
+        io.to(roomId).emit("room_state", rooms[roomId]);
+      }
     });
 
     socket.on("start_game", (roomId) => {
@@ -86,7 +93,7 @@ async function startServer() {
         player.trophies = trophies;
 
         // Check win condition
-        if (progress >= MULTIPLAYER_GOAL && !player.isFinished) {
+        if (progress >= room.goal && !player.isFinished) {
           player.isFinished = true;
           
           if (!room.winner) {

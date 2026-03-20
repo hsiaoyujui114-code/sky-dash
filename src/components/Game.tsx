@@ -19,7 +19,6 @@ const GRAVITY = 0.5;
 const THRUST = -1.2;
 const MAX_FALL_SPEED = 10;
 const MAX_RISE_SPEED = -8;
-const MULTIPLAYER_GOAL = 10000;
 
 type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
 type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
@@ -324,8 +323,10 @@ export default function Game() {
   const socketRef = useRef<Socket | null>(null);
   const [roomId, setRoomId] = useState('');
   const roomIdRef = useRef('');
+  const isMultiplayerRef = useRef(false);
   const [playerName, setPlayerName] = useState('');
   const [roomState, setRoomState] = useState<any>(null);
+  const [multiplayerGoal, setMultiplayerGoal] = useState(5000);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [multiplayerWinner, setMultiplayerWinner] = useState<string | null>(null);
   const otherPlayersRef = useRef<Record<string, any>>({});
@@ -392,6 +393,9 @@ export default function Game() {
 
     newSocket.on("room_state", (state) => {
       setRoomState(state);
+      if (state.goal) {
+        setMultiplayerGoal(state.goal);
+      }
       otherPlayersRef.current = state.players;
     });
 
@@ -509,6 +513,7 @@ export default function Game() {
   };
 
   const startGame = (level: Difficulty, keepSeed: boolean = false, isMultiplayer: boolean = false) => {
+    isMultiplayerRef.current = isMultiplayer;
     if (!keepSeed) {
       currentSeedRef.current = Math.random();
     }
@@ -906,7 +911,35 @@ export default function Game() {
     }
   }, [currentLevel]);
 
+  const respawn = () => {
+    playSound('crash');
+    spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#ef4444', 50);
+    
+    // Find last checkpoint (every 1000 points)
+    const checkpoint = Math.floor(scoreRef.current / 1000) * 1000;
+    scoreRef.current = checkpoint;
+    setScore(checkpoint);
+    
+    // Reset player
+    playerRef.current.y = CANVAS_HEIGHT / 2;
+    playerRef.current.vy = 0;
+    
+    // Give temporary invincibility (star power) and reset other powerups
+    powerupsRef.current = { shield: 0, boost: 0, doubleScore: 0, weapon: 0, star: 150, slow: 0 };
+    setPowerups({ ...powerupsRef.current });
+    
+    // Clear obstacles on screen to prevent immediate death
+    obstaclesRef.current = [];
+    itemsRef.current = [];
+    projectilesRef.current = [];
+    yHistoryRef.current = [];
+  };
+
   const gameOver = () => {
+    if (isMultiplayerRef.current) {
+      respawn();
+      return;
+    }
     playSound('crash');
     isPlayingRef.current = false;
     setGameState('gameover');
@@ -1095,8 +1128,10 @@ export default function Game() {
     const isDungeon = currentLevel === 'dungeon' && (gameState === 'playing' || gameState === 'victory' || gameState === 'gameover');
     
     if (isMultiplayer || isDungeon) {
-      const goal = isMultiplayer ? MULTIPLAYER_GOAL : 10000;
-      const finishLineX = playerRef.current.x + (goal - scoreRef.current);
+      const goal = isMultiplayer ? multiplayerGoal : 10000;
+      const smoothScore = scoreRef.current + (frameCountRef.current % 10) / 10 * (powerupsRef.current.doubleScore > 0 ? 2 : 1);
+      const finishLineX = playerRef.current.x + (goal - smoothScore) * (speedRef.current * 10);
+      
       if (finishLineX > -100 && finishLineX < CANVAS_WIDTH + 100) {
         ctx.save();
         const squareSize = 20;
@@ -1839,6 +1874,26 @@ export default function Game() {
                       ))}
                     </div>
                   </div>
+                  <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
+                    <h3 className="text-slate-400 text-sm font-bold mb-3">Race Distance</h3>
+                    <select 
+                      value={multiplayerGoal}
+                      onChange={(e) => {
+                        const newGoal = parseInt(e.target.value);
+                        setMultiplayerGoal(newGoal);
+                        if (socketRef.current) {
+                          socketRef.current.emit("update_room_settings", { roomId, goal: newGoal });
+                        }
+                      }}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value={1000}>Sprint (1,000)</option>
+                      <option value={3000}>Short (3,000)</option>
+                      <option value={5000}>Standard (5,000)</option>
+                      <option value={10000}>Marathon (10,000)</option>
+                      <option value={20000}>Endurance (20,000)</option>
+                    </select>
+                  </div>
                   <button 
                     onClick={(e) => { 
                       e.stopPropagation(); 
@@ -1875,12 +1930,12 @@ export default function Game() {
               <div key={p.id} className="flex flex-col gap-1">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-white font-bold truncate max-w-[100px]">{p.name}</span>
-                  <span className="text-slate-300 font-mono">{Math.floor((p.progress / MULTIPLAYER_GOAL) * 100)}%</span>
+                  <span className="text-slate-300 font-mono">{Math.floor((p.progress / multiplayerGoal) * 100)}%</span>
                 </div>
                 <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                   <div 
                     className="h-full rounded-full transition-all duration-300" 
-                    style={{ width: `${Math.min(100, (p.progress / MULTIPLAYER_GOAL) * 100)}%`, backgroundColor: p.color }}
+                    style={{ width: `${Math.min(100, (p.progress / multiplayerGoal) * 100)}%`, backgroundColor: p.color }}
                   ></div>
                 </div>
               </div>
