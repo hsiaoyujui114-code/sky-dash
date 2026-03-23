@@ -523,7 +523,6 @@ export default function Game() {
     teleportAnimRef.current = { active: false, timer: 0, x: 0, y: 0, targetY: 0 };
     
     setCurrentLevel(level);
-    isThrusting.current = false;
     playerRef.current = {
       x: 100,
       y: CANVAS_HEIGHT / 2,
@@ -931,7 +930,7 @@ export default function Game() {
     // Clear obstacles on screen to prevent immediate death
     obstaclesRef.current = [];
     itemsRef.current = [];
-    projectilesRef.current = [];
+    bulletsRef.current = [];
     yHistoryRef.current = [];
   };
 
@@ -1318,7 +1317,7 @@ export default function Game() {
           setGameState('level_select');
         } else if (gameState === 'gameover' || gameState === 'victory') {
           startGame(currentLevel, true);
-        } else if (gameState === 'playing') {
+        } else if (gameState === 'playing' || gameState === 'multiplayer_playing') {
           isThrusting.current = true;
         }
       }
@@ -1344,7 +1343,7 @@ export default function Game() {
       setGameState('level_select');
     } else if (gameState === 'gameover' || gameState === 'victory') {
       startGame(currentLevel, true);
-    } else if (gameState === 'playing') {
+    } else if (gameState === 'playing' || gameState === 'multiplayer_playing') {
       isThrusting.current = true;
     }
   };
