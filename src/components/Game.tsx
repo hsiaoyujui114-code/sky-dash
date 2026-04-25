@@ -356,6 +356,7 @@ export default function Game() {
   const itemsRef = useRef<Item[]>([]);
   const particlesRef = useRef<Particle[]>([]);
   const bulletsRef = useRef<Bullet[]>([]);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const frameCountRef = useRef(0);
   const scoreRef = useRef(0);
@@ -414,6 +415,7 @@ export default function Game() {
             if (startGameRef.current) startGameRef.current('medium', true, true);
           }
         }, 100);
+        countdownIntervalRef.current = interval;
       } else {
         setCountdown(null);
         if (startGameRef.current) startGameRef.current('medium', true, true);
@@ -896,6 +898,13 @@ export default function Game() {
 
     // Multiplayer emit
     if (socketRef.current && roomIdRef.current && frameCountRef.current % 3 === 0) {
+      const pId = socketRef.current.id;
+      if (pId && otherPlayersRef.current[pId]) {
+        otherPlayersRef.current[pId].progress = scoreRef.current;
+        otherPlayersRef.current[pId].y = player.y;
+        otherPlayersRef.current[pId].trophies = trophiesRef.current;
+      }
+      
       socketRef.current.emit("update_state", {
         roomId: roomIdRef.current,
         progress: scoreRef.current,
@@ -954,6 +963,24 @@ export default function Game() {
     saveScore(scoreRef.current);
     setHighScore(prev => Math.max(prev, scoreRef.current));
     spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#10b981', 100);
+  };
+
+  const quitMultiplayer = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (socketRef.current && roomIdRef.current) {
+      socketRef.current.emit("leave_room", roomIdRef.current);
+    }
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    setCountdown(null);
+    setGameState('start');
+    setRoomState(null);
+    setRoomId('');
+    roomIdRef.current = null;
+    isPlayingRef.current = false;
+    isMultiplayerRef.current = false;
   };
 
   const draw = useCallback(() => {
@@ -1818,8 +1845,8 @@ export default function Game() {
                 <h2 className="text-2xl font-black text-white tracking-tight">MULTIPLAYER</h2>
               </div>
               <button 
-                onClick={(e) => { e.stopPropagation(); setGameState('start'); }}
-                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                onClick={quitMultiplayer}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer flex-shrink-0 z-50 pointer-events-auto"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -1922,23 +1949,41 @@ export default function Game() {
 
       {/* Multiplayer HUD */}
       {gameState === 'multiplayer_playing' && (
-        <div className="absolute top-0 right-0 p-6 flex flex-col gap-2 pointer-events-none items-end">
-          <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex flex-col gap-1 min-w-[200px]">
-            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Race Progress</span>
-            {Object.values(otherPlayersRef.current).map((p: any) => (
-              <div key={p.id} className="flex flex-col gap-1">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-white font-bold truncate max-w-[100px]">{p.name}</span>
-                  <span className="text-slate-300 font-mono">{Math.floor((p.progress / multiplayerGoal) * 100)}%</span>
+        <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start pointer-events-none">
+          {/* Top Left: Quit Button & Score */}
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={quitMultiplayer}
+              className="flex items-center gap-2 bg-slate-800/80 backdrop-blur px-4 py-2 border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-slate-700/80 rounded-lg pointer-events-auto transition-all cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+              <span className="font-bold text-sm">QUIT</span>
+            </button>
+            <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex items-center gap-3">
+              <Trophy className={`w-5 h-5 ${currentRank.color}`} />
+              <span className="text-white font-mono text-xl font-bold">{score}</span>
+            </div>
+          </div>
+
+          {/* Top Right: Standings */}
+          <div className="flex flex-col gap-2 items-end">
+            <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex flex-col gap-1 min-w-[200px]">
+              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Race Progress</span>
+              {Object.values(otherPlayersRef.current).map((p: any) => (
+                <div key={p.id} className="flex flex-col gap-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-white font-bold truncate max-w-[100px]">{p.name}</span>
+                    <span className="text-slate-300 font-mono">{Math.floor((p.progress / multiplayerGoal) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full rounded-full transition-all duration-300" 
+                      style={{ width: `${Math.min(100, (p.progress / multiplayerGoal) * 100)}%`, backgroundColor: p.color }}
+                    ></div>
+                  </div>
                 </div>
-                <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full rounded-full transition-all duration-300" 
-                    style={{ width: `${Math.min(100, (p.progress / multiplayerGoal) * 100)}%`, backgroundColor: p.color }}
-                  ></div>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1973,7 +2018,7 @@ export default function Game() {
           
           <div className="flex gap-4 pointer-events-auto">
             <button 
-              onClick={(e) => { e.stopPropagation(); setGameState('start'); setRoomState(null); }}
+              onClick={quitMultiplayer}
               className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
             >
               <X className="w-5 h-5" />

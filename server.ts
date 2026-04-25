@@ -127,6 +127,18 @@ async function startServer() {
       }
     });
 
+    socket.on("leave_room", (roomId) => {
+      if (rooms[roomId] && rooms[roomId].players[socket.id]) {
+        socket.leave(roomId);
+        delete rooms[roomId].players[socket.id];
+        if (Object.keys(rooms[roomId].players).length === 0) {
+          delete rooms[roomId];
+        } else {
+          io.to(roomId).emit("room_state", rooms[roomId]);
+        }
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.id);
       // Remove player from rooms
