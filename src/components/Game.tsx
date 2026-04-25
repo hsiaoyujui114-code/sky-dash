@@ -329,6 +329,7 @@ export default function Game() {
   const [multiplayerGoal, setMultiplayerGoal] = useState(5000);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [multiplayerWinner, setMultiplayerWinner] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState(0);
   const otherPlayersRef = useRef<Record<string, any>>({});
   
   // Powerup timers (in frames, 60fps)
@@ -427,6 +428,7 @@ export default function Game() {
         ...otherPlayersRef.current[playerData.id],
         ...playerData
       };
+      setLastUpdate(Date.now());
     });
 
     newSocket.on("game_over", ({ winner, players }) => {
