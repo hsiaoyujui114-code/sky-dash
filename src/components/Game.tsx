@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit, Users } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
+import Peer, { DataConnection } from 'peerjs';
 
 class SeededRandom {
   private seed: number;
@@ -319,17 +319,25 @@ export default function Game() {
   const [progress, setProgress] = useState(0); // 0 to 100
   
   // Multiplayer state
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const [peer, setPeer] = useState<Peer | null>(null);
+  const peerRef = useRef<Peer | null>(null);
+  const connectionsRef = useRef<DataConnection[]>([]);
+  const isHostRef = useRef(false);
+  const hostConnectionRef = useRef<DataConnection | null>(null);
+  const myPlayerIdRef = useRef<string>('');
+  
   const [roomId, setRoomId] = useState('');
+  const [joinRoomIdInput, setJoinRoomIdInput] = useState('');
   const roomIdRef = useRef('');
   const isMultiplayerRef = useRef(false);
   const [playerName, setPlayerName] = useState('');
   const [roomState, setRoomState] = useState<any>(null);
+  const roomStateRef = useRef<any>(null);
   const [multiplayerGoal, setMultiplayerGoal] = useState(5000);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [multiplayerWinner, setMultiplayerWinner] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState(0);
+  const [isLobbyLoading, setIsLobbyLoading] = useState(false);
   const otherPlayersRef = useRef<Record<string, any>>({});
   
   // Powerup timers (in frames, 60fps)
@@ -389,58 +397,7 @@ export default function Game() {
 
   // Load history and ship on mount
   useEffect(() => {
-    const newSocket = io();
-    setSocket(newSocket);
-    socketRef.current = newSocket;
-
-    newSocket.on("room_state", (state) => {
-      setRoomState(state);
-      if (state.goal) {
-        setMultiplayerGoal(state.goal);
-      }
-      otherPlayersRef.current = state.players;
-    });
-
-    newSocket.on("game_started", ({ startTime }) => {
-      setGameState('multiplayer_playing');
-      const now = Date.now();
-      if (startTime > now) {
-        setCountdown(Math.ceil((startTime - now) / 1000));
-        const interval = setInterval(() => {
-          const currentNow = Date.now();
-          if (startTime > currentNow) {
-            setCountdown(Math.ceil((startTime - currentNow) / 1000));
-          } else {
-            setCountdown(null);
-            clearInterval(interval);
-            if (startGameRef.current) startGameRef.current('medium', true, true);
-          }
-        }, 100);
-        countdownIntervalRef.current = interval;
-      } else {
-        setCountdown(null);
-        if (startGameRef.current) startGameRef.current('medium', true, true);
-      }
-    });
-
-    newSocket.on("player_updated", (playerData) => {
-      otherPlayersRef.current[playerData.id] = {
-        ...otherPlayersRef.current[playerData.id],
-        ...playerData
-      };
-      setLastUpdate(Date.now());
-    });
-
-    newSocket.on("game_over", ({ winner, players }) => {
-      isPlayingRef.current = false;
-      setMultiplayerWinner(winner);
-      setGameState('multiplayer_gameover');
-      otherPlayersRef.current = players;
-    });
-
-    return () => {
-      newSocket.disconnect();
-    };
+    // This is handled by user interaction now
   }, []);
 
   useEffect(() => {
@@ -496,6 +453,226 @@ export default function Game() {
       progress = ((currentScore - currentRank.threshold) / (nextRank.threshold - currentRank.threshold)) * 100;
     }
     return { currentRank, nextRank, progress };
+  };
+
+  const broadcastState = (state: any) => {
+    connectionsRef.current.forEach(conn => {
+      conn.send({ type: 'room_state', state });
+    });
+  };
+
+  const hostHandleData = (senderId: string, data: any) => {
+    if (data.type === 'join') {
+      const newState = { ...roomStateRef.current };
+      newState.players[senderId] = {
+        id: senderId,
+        name: data.name,
+        color: data.color,
+        progress: 0,
+        y: 300,
+        trophies: 0,
+        isFinished: false
+      };
+      setRoomState(newState);
+      roomStateRef.current = newState;
+      otherPlayersRef.current = newState.players;
+      broadcastState(newState);
+    } else if (data.type === 'update_state') {
+      if (!roomStateRef.current) return;
+      const newState = { ...roomStateRef.current };
+      const p = newState.players[senderId];
+      if (p) {
+        p.progress = data.progress;
+        p.y = data.y;
+        p.trophies = data.trophies;
+        
+        // win condition logic
+        if (p.progress >= newState.goal && !p.isFinished) {
+          p.isFinished = true;
+          if (!newState.winner) {
+            newState.status = 'finished';
+            
+            let highestScore = -1;
+            let winnerId = senderId;
+            Object.values(newState.players).forEach((player: any) => {
+              const finalScore = player.progress + (player.trophies * 1000);
+              if (finalScore > highestScore) {
+                highestScore = finalScore;
+                winnerId = player.id;
+              }
+            });
+            newState.winner = winnerId;
+            
+            connectionsRef.current.forEach(conn => {
+              conn.send({ type: 'game_over', winner: winnerId, players: newState.players });
+            });
+            
+            isPlayingRef.current = false;
+            setMultiplayerWinner(winnerId);
+            setGameState('multiplayer_gameover');
+          }
+        }
+        
+        setRoomState(newState);
+        roomStateRef.current = newState;
+        otherPlayersRef.current = newState.players;
+        
+        connectionsRef.current.forEach(conn => {
+          conn.send({ type: 'player_updated', playerData: { id: senderId, progress: data.progress, y: data.y, trophies: data.trophies } });
+        });
+        setLastUpdate(Date.now());
+      }
+    }
+  };
+
+  const clientHandleData = (data: any) => {
+    if (data.type === 'room_state') {
+      setRoomState(data.state);
+      if (data.state.goal) {
+        setMultiplayerGoal(data.state.goal);
+      }
+      otherPlayersRef.current = data.state.players;
+    } else if (data.type === 'player_updated') {
+      otherPlayersRef.current[data.playerData.id] = {
+        ...otherPlayersRef.current[data.playerData.id],
+        ...data.playerData
+      };
+      setLastUpdate(Date.now());
+    } else if (data.type === 'game_started') {
+      setGameState('multiplayer_playing');
+      const startTime = data.startTime;
+      const now = Date.now();
+      if (startTime > now) {
+        setCountdown(Math.ceil((startTime - now) / 1000));
+        const interval = setInterval(() => {
+          const currentNow = Date.now();
+          if (startTime > currentNow) {
+            setCountdown(Math.ceil((startTime - currentNow) / 1000));
+          } else {
+            setCountdown(null);
+            clearInterval(interval);
+            if (startGameRef.current) startGameRef.current('medium', true, true);
+          }
+        }, 100);
+        countdownIntervalRef.current = interval;
+      } else {
+        setCountdown(null);
+        if (startGameRef.current) startGameRef.current('medium', true, true);
+      }
+    } else if (data.type === 'game_over') {
+      isPlayingRef.current = false;
+      setMultiplayerWinner(data.winner);
+      setGameState('multiplayer_gameover');
+      otherPlayersRef.current = data.players;
+    } else if (data.type === 'player_left') {
+      const newState = { ...roomStateRef.current };
+      delete newState.players[data.playerId];
+      setRoomState(newState);
+      roomStateRef.current = newState;
+      otherPlayersRef.current = newState.players;
+    }
+  };
+
+  const createRoom = () => {
+    setIsLobbyLoading(true);
+    const newPeer = new Peer();
+    newPeer.on('open', (id) => {
+      setPeer(newPeer);
+      peerRef.current = newPeer;
+      setRoomId(id);
+      roomIdRef.current = id;
+      myPlayerIdRef.current = id;
+      isHostRef.current = true;
+      
+      const initialState = {
+        id: id,
+        status: 'waiting',
+        goal: multiplayerGoal,
+        players: {
+          [id]: {
+            id,
+            name: playerName,
+            color: SHIPS[currentShip].baseColor,
+            progress: 0,
+            y: 300,
+            trophies: 0,
+            isFinished: false
+          }
+        }
+      };
+      setRoomState(initialState);
+      roomStateRef.current = initialState;
+      otherPlayersRef.current = initialState.players;
+      setIsLobbyLoading(false);
+    });
+
+    newPeer.on('connection', (conn) => {
+      conn.on('open', () => {
+        connectionsRef.current.push(conn);
+      });
+      conn.on('data', (data: any) => {
+        hostHandleData(conn.peer, data);
+      });
+      conn.on('close', () => {
+        connectionsRef.current = connectionsRef.current.filter(c => c.peer !== conn.peer);
+        const newState = { ...roomStateRef.current };
+        if (newState.players[conn.peer]) {
+          delete newState.players[conn.peer];
+          setRoomState(newState);
+          roomStateRef.current = newState;
+          otherPlayersRef.current = newState.players;
+          broadcastState(newState);
+        }
+      });
+    });
+  };
+
+  const joinRoom = () => {
+    setIsLobbyLoading(true);
+    const newPeer = new Peer();
+    newPeer.on('open', (id) => {
+      setPeer(newPeer);
+      peerRef.current = newPeer;
+      myPlayerIdRef.current = id;
+      isHostRef.current = false;
+      roomIdRef.current = joinRoomIdInput;
+      
+      const conn = newPeer.connect(joinRoomIdInput);
+      
+      conn.on('open', () => {
+        hostConnectionRef.current = conn;
+        conn.send({ type: 'join', name: playerName, color: SHIPS[currentShip].baseColor });
+        setIsLobbyLoading(false);
+      });
+      
+      conn.on('data', (data: any) => {
+        clientHandleData(data);
+      });
+      
+      conn.on('close', () => {
+         // handle host disconnect
+      });
+      conn.on('error', () => {
+         setIsLobbyLoading(false);
+         alert('Failed to connect.');
+      });
+    });
+  };
+
+  const startRaceMultiplayer = () => {
+    if (!isHostRef.current || !roomStateRef.current) return;
+    const newState = { ...roomStateRef.current };
+    newState.status = 'playing';
+    newState.startTime = Date.now() + 3000;
+    setRoomState(newState);
+    roomStateRef.current = newState;
+    
+    connectionsRef.current.forEach(conn => {
+      conn.send({ type: 'game_started', startTime: newState.startTime });
+    });
+    
+    // Also trigger self
+    clientHandleData({ type: 'game_started', startTime: newState.startTime });
   };
 
   const saveScore = (newScore: number) => {
@@ -899,20 +1076,24 @@ export default function Game() {
     }
 
     // Multiplayer emit
-    if (socketRef.current && roomIdRef.current && frameCountRef.current % 3 === 0) {
-      const pId = socketRef.current.id;
-      if (pId && otherPlayersRef.current[pId]) {
-        otherPlayersRef.current[pId].progress = scoreRef.current;
-        otherPlayersRef.current[pId].y = player.y;
-        otherPlayersRef.current[pId].trophies = trophiesRef.current;
+    if (isMultiplayerRef.current && frameCountRef.current % 3 === 0) {
+      if (isHostRef.current) {
+        // If host, handle directly
+        hostHandleData(myPlayerIdRef.current, {
+          type: 'update_state',
+          progress: scoreRef.current,
+          y: player.y,
+          trophies: trophiesRef.current
+        });
+      } else if (hostConnectionRef.current) {
+        // If guest, send to host
+        hostConnectionRef.current.send({
+          type: 'update_state',
+          progress: scoreRef.current,
+          y: player.y,
+          trophies: trophiesRef.current
+        });
       }
-      
-      socketRef.current.emit("update_state", {
-        roomId: roomIdRef.current,
-        progress: scoreRef.current,
-        y: player.y,
-        trophies: trophiesRef.current
-      });
     }
 
     // Dungeon victory condition
@@ -969,9 +1150,17 @@ export default function Game() {
 
   const quitMultiplayer = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (socketRef.current && roomIdRef.current) {
-      socketRef.current.emit("leave_room", roomIdRef.current);
+    if (peerRef.current) {
+      if (!isHostRef.current && hostConnectionRef.current) {
+        hostConnectionRef.current.send({ type: 'player_left', playerId: myPlayerIdRef.current });
+      }
+      peerRef.current.destroy();
+      peerRef.current = null;
+      setPeer(null);
     }
+    connectionsRef.current = [];
+    hostConnectionRef.current = null;
+    
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -979,8 +1168,10 @@ export default function Game() {
     setCountdown(null);
     setGameState('start');
     setRoomState(null);
+    roomStateRef.current = null;
     setRoomId('');
-    roomIdRef.current = null;
+    roomIdRef.current = '';
+    myPlayerIdRef.current = '';
     isPlayingRef.current = false;
     isMultiplayerRef.current = false;
   };
@@ -1180,9 +1371,9 @@ export default function Game() {
     }
 
     // Other Players (Multiplayer)
-    if (socketRef.current && roomIdRef.current) {
+    if (isMultiplayerRef.current && roomStateRef.current) {
       Object.values(otherPlayersRef.current).forEach((p: any) => {
-        if (p.id === socketRef.current?.id) return;
+        if (p.id === myPlayerIdRef.current) return;
         
         // Calculate relative X position based on progress difference
         const progressDiff = p.progress - scoreRef.current;
@@ -1864,40 +2055,56 @@ export default function Game() {
                       onChange={(e) => setPlayerName(e.target.value)} 
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
                       placeholder="Enter your name"
+                      disabled={isLobbyLoading}
                     />
                   </div>
-                  <div>
-                    <label className="block text-slate-400 text-sm font-bold mb-2">Room ID</label>
-                    <input 
-                      type="text" 
-                      value={roomId} 
-                      onChange={(e) => { setRoomId(e.target.value); roomIdRef.current = e.target.value; }} 
-                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
-                      placeholder="Enter room ID to join or create"
-                    />
+                  
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if (playerName) createRoom();
+                      }}
+                      disabled={!playerName || isLobbyLoading}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-4 py-3 rounded-xl font-bold transition-all cursor-pointer"
+                    >
+                      {isLobbyLoading ? 'WAITING...' : 'CREATE NEW'}
+                    </button>
+                    
+                    <div className="flex-1 flex gap-2">
+                      <input 
+                        type="text" 
+                        value={joinRoomIdInput} 
+                        onChange={(e) => setJoinRoomIdInput(e.target.value)} 
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-3 text-white focus:outline-none focus:border-indigo-500 text-sm"
+                        placeholder="Room ID"
+                        disabled={isLobbyLoading}
+                      />
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          if (joinRoomIdInput && playerName) joinRoom();
+                        }}
+                        disabled={!joinRoomIdInput || !playerName || isLobbyLoading}
+                        className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-4 py-3 rounded-xl font-bold transition-all cursor-pointer"
+                      >
+                        JOIN
+                      </button>
+                    </div>
                   </div>
-                  <button 
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      if (roomId && playerName && socketRef.current) {
-                        socketRef.current.emit("join_room", { roomId, name: playerName, color: SHIPS[currentShip].baseColor });
-                      }
-                    }}
-                    disabled={!roomId || !playerName}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-6 py-4 rounded-xl font-bold transition-all cursor-pointer mt-2"
-                  >
-                    JOIN ROOM
-                  </button>
                 </>
               ) : (
                 <>
                   <div className="bg-slate-900 rounded-lg p-4 border border-slate-700">
-                    <h3 className="text-slate-400 text-sm font-bold mb-3">Players in Room: {roomId}</h3>
+                    <h3 className="text-slate-400 text-sm font-bold mb-3 flex justify-between">
+                      <span>Room ID: <span className="text-white select-all">{roomId}</span></span>
+                      {isHostRef.current && <span className="text-indigo-400">HOST</span>}
+                    </h3>
                     <div className="flex flex-col gap-2">
                       {Object.values(roomState.players).map((p: any) => (
                         <div key={p.id} className="flex items-center gap-3 bg-slate-800 p-2 rounded-lg">
                           <div className="w-4 h-4 rounded-full" style={{ backgroundColor: p.color }}></div>
-                          <span className="text-white font-bold">{p.name} {p.id === socketRef.current?.id ? '(You)' : ''}</span>
+                          <span className="text-white font-bold">{p.name} {p.id === myPlayerIdRef.current ? '(You)' : ''}</span>
                         </div>
                       ))}
                     </div>
@@ -1909,11 +2116,13 @@ export default function Game() {
                       onChange={(e) => {
                         const newGoal = parseInt(e.target.value);
                         setMultiplayerGoal(newGoal);
-                        if (socketRef.current) {
-                          socketRef.current.emit("update_room_settings", { roomId, goal: newGoal });
-                        }
+                        const newState = { ...roomStateRef.current, goal: newGoal };
+                        setRoomState(newState);
+                        roomStateRef.current = newState;
+                        broadcastState(newState);
                       }}
-                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500"
+                      disabled={!isHostRef.current}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 disabled:opacity-50"
                     >
                       <option value={1000}>Sprint (1,000)</option>
                       <option value={3000}>Short (3,000)</option>
@@ -1922,17 +2131,21 @@ export default function Game() {
                       <option value={20000}>Endurance (20,000)</option>
                     </select>
                   </div>
-                  <button 
-                    onClick={(e) => { 
-                      e.stopPropagation(); 
-                      if (socketRef.current) {
-                        socketRef.current.emit("start_game", roomId);
-                      }
-                    }}
-                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-4 rounded-xl font-black transition-all cursor-pointer mt-2"
-                  >
-                    START RACE
-                  </button>
+                  {isHostRef.current ? (
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        startRaceMultiplayer();
+                      }}
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-4 rounded-xl font-black transition-all cursor-pointer mt-2"
+                    >
+                      START RACE
+                    </button>
+                  ) : (
+                    <div className="text-center p-4 text-slate-400 font-bold bg-slate-800 rounded-lg border border-slate-700 animate-pulse">
+                      WAITING FOR HOST TO START...
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1995,7 +2208,7 @@ export default function Game() {
         <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
           <h2 className="text-5xl font-black text-yellow-500 mb-2 tracking-tight">RACE FINISHED!</h2>
           <p className="text-xl text-white mb-8">
-            {multiplayerWinner === socketRef.current?.id ? 'You won the race!' : `${otherPlayersRef.current[multiplayerWinner || '']?.name || 'Someone'} won the race!`}
+            {multiplayerWinner === myPlayerIdRef.current ? 'You won the race!' : `${otherPlayersRef.current[multiplayerWinner || '']?.name || 'Someone'} won the race!`}
           </p>
           
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 flex flex-col gap-4 min-w-[300px]">
