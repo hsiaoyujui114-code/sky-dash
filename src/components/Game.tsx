@@ -575,22 +575,23 @@ export default function Game() {
 
   const createRoom = () => {
     setIsLobbyLoading(true);
-    const newPeer = new Peer();
+    const shortCode = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+    const newPeer = new Peer(shortCode);
     newPeer.on('open', (id) => {
       setPeer(newPeer);
       peerRef.current = newPeer;
-      setRoomId(id);
-      roomIdRef.current = id;
-      myPlayerIdRef.current = id;
+      setRoomId(shortCode);
+      roomIdRef.current = shortCode;
+      myPlayerIdRef.current = shortCode;
       isHostRef.current = true;
       
       const initialState = {
-        id: id,
+        id: shortCode,
         status: 'waiting',
         goal: multiplayerGoal,
         players: {
-          [id]: {
-            id,
+          [shortCode]: {
+            id: shortCode,
             name: playerName,
             color: SHIPS[currentShip].baseColor,
             progress: 0,
