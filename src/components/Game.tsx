@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit, Users } from 'lucide-react';
+import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit, Users, HelpCircle, Sparkles, Clock } from 'lucide-react';
 import Peer, { DataConnection } from 'peerjs';
 
 class SeededRandom {
@@ -22,7 +22,7 @@ const MAX_RISE_SPEED = -8;
 
 type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
 type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
-type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'dungeon';
+type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
 type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky';
 
 interface LevelConfig {
@@ -38,6 +38,7 @@ const LEVELS: Record<Difficulty, LevelConfig> = {
   medium: { id: 'medium', name: 'Medium', baseSpeed: 6, obstacleFrequency: 45, color: 'text-yellow-400' },
   hard: { id: 'hard', name: 'Hard', baseSpeed: 8, obstacleFrequency: 30, color: 'text-orange-400' },
   expert: { id: 'expert', name: 'Expert', baseSpeed: 10, obstacleFrequency: 20, color: 'text-red-500' },
+  insane: { id: 'insane', name: 'Insane', baseSpeed: 13, obstacleFrequency: 15, color: 'text-rose-600' },
   dungeon: { id: 'dungeon', name: 'CSIE Dungeon', baseSpeed: 7, obstacleFrequency: 25, color: 'text-purple-500' },
 };
 
@@ -311,6 +312,7 @@ const playSound = (type: 'coin' | 'powerup' | 'shoot' | 'explosion' | 'crash' | 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<GameState>('start');
+  const [showInstructions, setShowInstructions] = useState(false);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [history, setHistory] = useState<ScoreRecord[]>([]);
@@ -575,23 +577,22 @@ export default function Game() {
 
   const createRoom = () => {
     setIsLobbyLoading(true);
-    const shortCode = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
-    const newPeer = new Peer(shortCode);
+    const newPeer = new Peer();
     newPeer.on('open', (id) => {
       setPeer(newPeer);
       peerRef.current = newPeer;
-      setRoomId(shortCode);
-      roomIdRef.current = shortCode;
-      myPlayerIdRef.current = shortCode;
+      setRoomId(id);
+      roomIdRef.current = id;
+      myPlayerIdRef.current = id;
       isHostRef.current = true;
       
       const initialState = {
-        id: shortCode,
+        id: id,
         status: 'waiting',
         goal: multiplayerGoal,
         players: {
-          [shortCode]: {
-            id: shortCode,
+          [id]: {
+            id,
             name: playerName,
             color: SHIPS[currentShip].baseColor,
             progress: 0,
@@ -1749,7 +1750,114 @@ export default function Game() {
               <History className="w-5 h-5" />
               <span className="font-bold">History</span>
             </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setShowInstructions(true); }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg border border-emerald-400 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <HelpCircle className="w-5 h-5" />
+              <span className="font-bold">遊戲說明</span>
+            </button>
           </div>
+
+          {showInstructions && (
+            <div className="absolute inset-0 bg-slate-900/95 z-50 flex flex-col items-center justify-center p-8">
+              <div className="w-full max-w-2xl bg-slate-800 border border-slate-700 rounded-3xl p-8 overflow-y-auto max-h-[80vh]">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-3xl font-black text-white">遊戲說明</h2>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setShowInstructions(false); }}
+                    className="p-2 bg-slate-700 hover:bg-slate-600 rounded-full transition-colors cursor-pointer"
+                  >
+                    <X className="w-6 h-6 text-slate-300" />
+                  </button>
+                </div>
+                
+                <div className="space-y-6 text-slate-300 leading-relaxed pointer-events-auto">
+                  <section>
+                    <h3 className="text-xl font-bold text-emerald-400 mb-2">基本操作</h3>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li><strong>電腦版：</strong>按住 <code>空白鍵 (Space)</code> 或 <code>滑鼠左鍵</code> 讓飛船上升，放開則會依重力下降。</li>
+                      <li><strong>手機/平板版：</strong>點擊並按住螢幕任何地方讓飛船上升，放開則會下降。</li>
+                    </ul>
+                  </section>
+
+                  <section>
+                    <h3 className="text-xl font-bold text-emerald-400 mb-2">遊戲目標</h3>
+                    <p>避開所有紅色的障礙物，盡可能飛得更遠來獲得高分！碰到障礙物遊戲就會結束。</p>
+                  </section>
+
+                  <section>
+                    <h3 className="text-xl font-bold text-emerald-400 mb-2">道具說明</h3>
+                    <ul className="space-y-3">
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-blue-500/20 border-2 border-blue-500 flex items-center justify-center shrink-0">
+                          <Shield className="w-4 h-4 text-blue-400" />
+                        </div>
+                        <div><strong>護盾 (Shield)：</strong> 獲得無敵狀態 10 秒，可抵擋一次撞擊。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-orange-500/20 border-2 border-orange-500 flex items-center justify-center shrink-0">
+                          <Zap className="w-4 h-4 text-orange-400" />
+                        </div>
+                        <div><strong>衝刺 (Boost)：</strong> 獲得極速衝刺 5 秒，期間無敵且會摧毀障礙物。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-yellow-500/20 border-2 border-yellow-500 flex items-center justify-center shrink-0">
+                          <Star className="w-4 h-4 text-yellow-400" />
+                        </div>
+                        <div><strong>雙倍分數 (Double Score)：</strong> 10 秒內獲得的分數變為兩倍。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-500/20 border-2 border-green-500 flex items-center justify-center shrink-0">
+                          <Crosshair className="w-4 h-4 text-green-400" />
+                        </div>
+                        <div><strong>武器 (Weapon)：</strong> 獲得發射子彈的能力 10 秒，可擊碎前方障礙物。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-400/20 border-2 border-amber-400 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div><strong>無敵星 (Star)：</strong> 獲得完全無敵狀態 10 秒，閃爍發光並摧毀所有碰到的障礙物。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-purple-500/20 border-2 border-purple-500 flex items-center justify-center shrink-0">
+                          <Clock className="w-4 h-4 text-purple-400" />
+                        </div>
+                        <div><strong>減速 (Slow)：</strong> 5 秒內讓遊戲速度減緩，更容易閃避障礙物。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center shrink-0">
+                          <Rocket className="w-4 h-4 text-red-400" />
+                        </div>
+                        <div><strong>飛彈 (Missile)：</strong> 立即發射一枚導彈，摧毀前方障礙物。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-fuchsia-500/20 border-2 border-fuchsia-500 flex items-center justify-center shrink-0">
+                          <Orbit className="w-4 h-4 text-fuchsia-400" />
+                        </div>
+                        <div><strong>傳送門 (Portal)：</strong> 隨機傳送飛船到另一個安全位置，躲避危機。</div>
+                      </li>
+                      <li className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-yellow-500/20 border-2 border-yellow-500 flex items-center justify-center shrink-0">
+                          <Trophy className="w-4 h-4 text-yellow-400" />
+                        </div>
+                        <div><strong>獎盃 (Trophy)：</strong> 獲得大量分數 (1000分)</div>
+                      </li>
+                    </ul>
+                  </section>
+
+                  <section>
+                    <h3 className="text-xl font-bold text-emerald-400 mb-2">遊戲模式</h3>
+                    <ul className="list-disc pl-5 space-y-2">
+                      <li><strong>單人模式：</strong>分為簡單(Easy)、普通(Medium)、困難(Hard)、專家(Expert)、瘋狂(Insane)以及地城(Dungeon)模式。難度越高，速度越快、障礙物越密集。</li>
+                      <li><strong>多人模式 (Multiplayer)：</strong>可以建立房間並邀請朋友一起競速！首先到達設定終點線的玩家獲勝。</li>
+                      <li><strong>機庫 (Hangar)：</strong>可以選擇不同外觀的飛船。</li>
+                    </ul>
+                  </section>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-6 mb-12 pointer-events-none">
             <div className="flex items-center gap-4 bg-slate-800/50 p-3 rounded-xl">
