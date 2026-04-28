@@ -766,15 +766,20 @@ export default function Game() {
     }
     
     // Decrease powerup timers
-    let powerupsChanged = false;
-    if (pUps.shield > 0) { pUps.shield--; powerupsChanged = true; }
-    if (pUps.boost > 0) { pUps.boost--; powerupsChanged = true; }
-    if (pUps.doubleScore > 0) { pUps.doubleScore--; powerupsChanged = true; }
-    if (pUps.star > 0) { pUps.star--; powerupsChanged = true; }
-    if (pUps.slow > 0) { pUps.slow--; powerupsChanged = true; }
+    let prevShield = pUps.shield;
+    let prevBoost = pUps.boost;
+    let prevDoubleScore = pUps.doubleScore;
+    let prevStar = pUps.star;
+    let prevSlow = pUps.slow;
+    let prevWeapon = pUps.weapon;
+
+    if (pUps.shield > 0) pUps.shield--;
+    if (pUps.boost > 0) pUps.boost--;
+    if (pUps.doubleScore > 0) pUps.doubleScore--;
+    if (pUps.star > 0) pUps.star--;
+    if (pUps.slow > 0) pUps.slow--;
     if (pUps.weapon > 0) { 
       pUps.weapon--; 
-      powerupsChanged = true;
       // Auto shoot every 15 frames
       if (pUps.weapon % 15 === 0) {
         bulletsRef.current.push({
@@ -789,7 +794,16 @@ export default function Game() {
       }
     }
 
-    if (powerupsChanged && frameCountRef.current % 10 === 0) {
+    if (
+      (pUps.shield === 0 && prevShield > 0) ||
+      (pUps.boost === 0 && prevBoost > 0) ||
+      (pUps.doubleScore === 0 && prevDoubleScore > 0) ||
+      (pUps.star === 0 && prevStar > 0) ||
+      (pUps.slow === 0 && prevSlow > 0) ||
+      (pUps.weapon === 0 && prevWeapon > 0)
+    ) {
+      setPowerups({ ...pUps });
+    } else if (frameCountRef.current % 10 === 0 && (pUps.shield > 0 || pUps.boost > 0 || pUps.doubleScore > 0 || pUps.star > 0 || pUps.slow > 0 || pUps.weapon > 0)) {
       setPowerups({ ...pUps });
     }
 
