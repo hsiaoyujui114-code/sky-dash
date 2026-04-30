@@ -543,6 +543,7 @@ export default function Game() {
     } else if (data.type === 'game_started') {
       setGameState('multiplayer_playing');
       const startTime = data.startTime;
+      const seed = data.seed;
       const now = Date.now();
       if (startTime > now) {
         setCountdown(Math.ceil((startTime - now) / 1000));
@@ -553,13 +554,19 @@ export default function Game() {
           } else {
             setCountdown(null);
             clearInterval(interval);
-            if (startGameRef.current) startGameRef.current('medium', true, true);
+            if (startGameRef.current) {
+              currentSeedRef.current = seed;
+              startGameRef.current('medium', true, true);
+            }
           }
         }, 100);
         countdownIntervalRef.current = interval;
       } else {
         setCountdown(null);
-        if (startGameRef.current) startGameRef.current('medium', true, true);
+        if (startGameRef.current) {
+          currentSeedRef.current = seed;
+          startGameRef.current('medium', true, true);
+        }
       }
     } else if (data.type === 'game_over') {
       isPlayingRef.current = false;
@@ -667,15 +674,16 @@ export default function Game() {
     const newState = { ...roomStateRef.current };
     newState.status = 'playing';
     newState.startTime = Date.now() + 3000;
+    const gameSeed = Math.random();
     setRoomState(newState);
     roomStateRef.current = newState;
-    
+
     connectionsRef.current.forEach(conn => {
-      conn.send({ type: 'game_started', startTime: newState.startTime });
+      conn.send({ type: 'game_started', startTime: newState.startTime, seed: gameSeed });
     });
-    
+
     // Also trigger self
-    clientHandleData({ type: 'game_started', startTime: newState.startTime });
+    clientHandleData({ type: 'game_started', startTime: newState.startTime, seed: gameSeed });
   };
 
   const saveScore = (newScore: number) => {
