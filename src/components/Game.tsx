@@ -2054,42 +2054,43 @@ export default function Game() {
 
       {/* Level Select Screen */}
       {gameState === 'level_select' && (
-        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-8">
-          <h2 className="text-4xl font-black text-white mb-8 tracking-tight">SELECT LEVEL</h2>
+        <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md overflow-y-auto flex flex-col items-center p-8">
+          <div className="flex flex-col items-center w-full">
+            <h2 className="text-4xl font-black text-white mb-8 tracking-tight sticky top-0 z-10">SELECT LEVEL</h2>
 
-          <div className="w-full max-w-2xl mb-8 bg-slate-800 p-4 rounded-xl border border-slate-700">
-            <label className="block text-sm font-bold text-slate-300 mb-2">Enter World Code (Optional)</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={worldCodeInput}
-                onChange={(e) => setWorldCodeInput(e.target.value.toUpperCase().slice(0, 6))}
-                placeholder="e.g., A1B2C3"
-                maxLength={6}
-                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white font-mono text-center uppercase placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-              />
-              <button
-                onClick={() => {
-                  if (worldCodeInput.length === 6) {
-                    const seed = codeToSeed(worldCodeInput);
-                    currentSeedRef.current = seed;
-                    startGame(currentLevel, true);
-                    setWorldCodeInput('');
-                  }
-                }}
-                className={`px-6 py-2 rounded-lg font-bold transition-all ${
-                  worldCodeInput.length === 6
-                    ? 'bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer'
-                    : 'bg-slate-600 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                Load
-              </button>
+            <div className="w-full max-w-2xl mb-8 bg-slate-800 p-4 rounded-xl border border-slate-700">
+              <label className="block text-sm font-bold text-slate-300 mb-2">Enter World Code (Optional)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={worldCodeInput}
+                  onChange={(e) => setWorldCodeInput(e.target.value.toUpperCase().slice(0, 6))}
+                  placeholder="e.g., A1B2C3"
+                  maxLength={6}
+                  className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white font-mono text-center uppercase placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  onClick={() => {
+                    if (worldCodeInput.length === 6) {
+                      const seed = codeToSeed(worldCodeInput);
+                      currentSeedRef.current = seed;
+                      startGame(currentLevel, true);
+                      setWorldCodeInput('');
+                    }
+                  }}
+                  className={`px-6 py-2 rounded-lg font-bold transition-all ${
+                    worldCodeInput.length === 6
+                      ? 'bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer'
+                      : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  Load
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Enter a 6-character world code to replay a world</p>
             </div>
-            <p className="text-xs text-slate-400 mt-2">Enter a 6-character world code to replay a world</p>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
             {(Object.keys(LEVELS) as Difficulty[]).map((levelKey) => {
               const level = LEVELS[levelKey];
               return (
@@ -2109,14 +2110,15 @@ export default function Game() {
                 </button>
               );
             })}
+            </div>
+
+            <button
+              onClick={(e) => { e.stopPropagation(); setGameState('start'); }}
+              className="mt-8 mb-8 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              Back to Menu
+            </button>
           </div>
-          
-          <button 
-            onClick={(e) => { e.stopPropagation(); setGameState('start'); }}
-            className="mt-8 text-slate-400 hover:text-white transition-colors cursor-pointer"
-          >
-            Back to Menu
-          </button>
         </div>
       )}
 
