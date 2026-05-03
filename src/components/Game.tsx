@@ -20,6 +20,16 @@ const THRUST = -1.2;
 const MAX_FALL_SPEED = 10;
 const MAX_RISE_SPEED = -8;
 
+const generateWorldCode = (seed: number): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const rng = new SeededRandom(seed);
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(rng.next() * chars.length));
+  }
+  return code;
+};
+
 type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
 type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
@@ -1686,6 +1696,11 @@ export default function Game() {
                 <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
                   <span className={`font-mono text-sm font-bold ${currentRank.color}`}>
                     {currentRank.name}
+                  </span>
+                </div>
+                <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
+                  <span className={`font-mono text-xs font-bold text-cyan-400`}>
+                    WORLD: {generateWorldCode(currentSeedRef.current)}
                   </span>
                 </div>
               </div>
