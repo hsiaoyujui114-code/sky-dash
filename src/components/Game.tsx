@@ -350,6 +350,7 @@ export default function Game() {
   const [multiplayerWinner, setMultiplayerWinner] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState(0);
   const [isLobbyLoading, setIsLobbyLoading] = useState(false);
+  const [copiedWorldCode, setCopiedWorldCode] = useState(false);
   const otherPlayersRef = useRef<Record<string, any>>({});
   
   // Powerup timers (in frames, 60fps)
@@ -711,6 +712,14 @@ export default function Game() {
       const updated = [newRecord, ...prev].slice(0, 100);
       localStorage.setItem('skyDashHistoryV2', JSON.stringify(updated));
       return updated;
+    });
+  };
+
+  const copyWorldCode = () => {
+    const code = generateWorldCode(currentSeedRef.current);
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedWorldCode(true);
+      setTimeout(() => setCopiedWorldCode(false), 2000);
     });
   };
 
@@ -1698,11 +1707,19 @@ export default function Game() {
                     {currentRank.name}
                   </span>
                 </div>
-                <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
-                  <span className={`font-mono text-xs font-bold text-cyan-400`}>
-                    WORLD: {generateWorldCode(currentSeedRef.current)}
+                <button
+                  onClick={copyWorldCode}
+                  className={`bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border flex items-center gap-2 cursor-pointer transition-all pointer-events-auto ${
+                    copiedWorldCode
+                      ? 'border-green-500/50 bg-green-500/10'
+                      : 'border-slate-700/50 hover:border-cyan-500/50 hover:bg-slate-700/50'
+                  }`}
+                  title="Click to copy world code"
+                >
+                  <span className={`font-mono text-xs font-bold ${copiedWorldCode ? 'text-green-400' : 'text-cyan-400'}`}>
+                    {copiedWorldCode ? 'COPIED!' : `WORLD: ${generateWorldCode(currentSeedRef.current)}`}
                   </span>
-                </div>
+                </button>
               </div>
             </div>
 
