@@ -30,6 +30,16 @@ const generateWorldCode = (seed: number): string => {
   return code;
 };
 
+const codeToSeed = (code: string): number => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let value = 0;
+  for (let i = 0; i < code.length; i++) {
+    const index = chars.indexOf(code[i].toUpperCase());
+    value = (value * 36 + (index >= 0 ? index : 0)) % 233280;
+  }
+  return value / 233280;
+};
+
 type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
 type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
@@ -351,6 +361,7 @@ export default function Game() {
   const [lastUpdate, setLastUpdate] = useState(0);
   const [isLobbyLoading, setIsLobbyLoading] = useState(false);
   const [copiedWorldCode, setCopiedWorldCode] = useState(false);
+  const [worldCodeInput, setWorldCodeInput] = useState('');
   const otherPlayersRef = useRef<Record<string, any>>({});
   
   // Powerup timers (in frames, 60fps)
@@ -2045,7 +2056,39 @@ export default function Game() {
       {gameState === 'level_select' && (
         <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center p-8">
           <h2 className="text-4xl font-black text-white mb-8 tracking-tight">SELECT LEVEL</h2>
-          
+
+          <div className="w-full max-w-2xl mb-8 bg-slate-800 p-4 rounded-xl border border-slate-700">
+            <label className="block text-sm font-bold text-slate-300 mb-2">Enter World Code (Optional)</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={worldCodeInput}
+                onChange={(e) => setWorldCodeInput(e.target.value.toUpperCase().slice(0, 6))}
+                placeholder="e.g., A1B2C3"
+                maxLength={6}
+                className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 text-white font-mono text-center uppercase placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              />
+              <button
+                onClick={() => {
+                  if (worldCodeInput.length === 6) {
+                    const seed = codeToSeed(worldCodeInput);
+                    currentSeedRef.current = seed;
+                    startGame(currentLevel, true);
+                    setWorldCodeInput('');
+                  }
+                }}
+                className={`px-6 py-2 rounded-lg font-bold transition-all ${
+                  worldCodeInput.length === 6
+                    ? 'bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer'
+                    : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                Load
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-2">Enter a 6-character world code to replay a world</p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
             {(Object.keys(LEVELS) as Difficulty[]).map((levelKey) => {
               const level = LEVELS[levelKey];
