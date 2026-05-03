@@ -1679,6 +1679,11 @@ export default function Game() {
                   </span>
                 </div>
                 <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
+                  <span className={`font-mono text-xs font-bold text-gray-400`}>
+                    MAP: {LEVELS[currentLevel].id.toUpperCase()}
+                  </span>
+                </div>
+                <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50 flex items-center gap-2">
                   <span className={`font-mono text-sm font-bold ${currentRank.color}`}>
                     {currentRank.name}
                   </span>
@@ -2299,7 +2304,7 @@ export default function Game() {
         <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-start pointer-events-none">
           {/* Top Left: Quit Button & Score */}
           <div className="flex flex-col gap-2">
-            <button 
+            <button
               onClick={quitMultiplayer}
               className="flex items-center gap-2 bg-slate-800/80 backdrop-blur px-4 py-2 border border-red-500/30 text-red-400 hover:text-red-300 hover:bg-slate-700/80 rounded-lg pointer-events-auto transition-all cursor-pointer"
             >
@@ -2309,6 +2314,11 @@ export default function Game() {
             <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex items-center gap-3">
               <Trophy className={`w-5 h-5 ${currentRank.color}`} />
               <span className="text-white font-mono text-xl font-bold">{score}</span>
+            </div>
+            <div className="bg-slate-800/50 backdrop-blur px-3 py-1 rounded-lg border border-slate-700/50">
+              <span className="font-mono text-xs font-bold text-gray-400">
+                MAP: {LEVELS[currentLevel].id.toUpperCase()}
+              </span>
             </div>
           </div>
 
