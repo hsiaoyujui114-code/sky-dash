@@ -2401,22 +2401,35 @@ export default function Game() {
 
           {/* Top Right: Standings */}
           <div className="flex flex-col gap-2 items-end">
-            <div className="bg-slate-800/80 backdrop-blur px-4 py-2 rounded-lg border border-slate-700 flex flex-col gap-1 min-w-[200px]">
-              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Race Progress</span>
-              {Object.values(otherPlayersRef.current).map((p: any) => (
-                <div key={p.id} className="flex flex-col gap-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-white font-bold truncate max-w-[100px]">{p.name}</span>
-                    <span className="text-slate-300 font-mono">{Math.floor((p.progress / multiplayerGoal) * 100)}%</span>
+            <div className="bg-slate-800/80 backdrop-blur px-4 py-3 rounded-lg border border-slate-700 flex flex-col gap-2 min-w-[280px]">
+              <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Players in Race</span>
+              {[myPlayerIdRef.current, ...Object.keys(otherPlayersRef.current).filter(id => id !== myPlayerIdRef.current)].map((playerId) => {
+                const p = playerId === myPlayerIdRef.current
+                  ? { id: myPlayerIdRef.current, name: playerName, color: SHIPS[currentShip].baseColor, progress: 0, trophies: 0 }
+                  : otherPlayersRef.current[playerId];
+                return p ? (
+                  <div key={p.id} className="flex flex-col gap-1">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color }}></div>
+                        <span className={`text-xs font-bold truncate ${playerId === myPlayerIdRef.current ? 'text-emerald-400' : 'text-white'}`}>
+                          {p.name}{playerId === myPlayerIdRef.current ? ' (You)' : ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-slate-300 font-mono text-xs">{Math.floor(p.progress)}</span>
+                        <span className="text-slate-500 text-xs">{Math.floor((p.progress / multiplayerGoal) * 100)}%</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, (p.progress / multiplayerGoal) * 100)}%`, backgroundColor: p.color }}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-300" 
-                      style={{ width: `${Math.min(100, (p.progress / multiplayerGoal) * 100)}%`, backgroundColor: p.color }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
+                ) : null;
+              })}
             </div>
           </div>
         </div>
