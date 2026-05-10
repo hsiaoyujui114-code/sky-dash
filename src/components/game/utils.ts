@@ -11,10 +11,11 @@ export class SeededRandom {
 
 export const generateWorldCode = (seed: number): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const rng = new SeededRandom(seed);
   let code = '';
+  let value = seed;
   for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(rng.next() * chars.length));
+    code = chars.charAt(value % 36) + code;
+    value = Math.floor(value / 36);
   }
   return code;
 };
@@ -24,7 +25,7 @@ export const codeToSeed = (code: string): number => {
   let value = 0;
   for (let i = 0; i < code.length; i++) {
     const index = chars.indexOf(code[i].toUpperCase());
-    value = (value * 36 + (index >= 0 ? index : 0)) % 233280;
+    value = value * 36 + (index >= 0 ? index : 0);
   }
-  return value / 233280;
+  return value % 233280;
 };
