@@ -43,7 +43,7 @@ const codeToSeed = (code: string): number => {
 type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
 type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
-type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky';
+type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky' | 'fighter' | 'shuttle' | 'cruiser';
 
 interface LevelConfig {
   id: Difficulty;
@@ -186,14 +186,132 @@ const SHIPS: Record<ShipType, ShipConfig> = {
     draw: (ctx, w, h, color, thrusting, boost) => {
       ctx.fillStyle = color;
       ctx.fillRect(-w/2, -h/2, w, h);
-      
+
       ctx.fillStyle = '#000';
       ctx.fillRect(w/4, -h/4, w/4, h/4); // Eye/Window
-      
+
       if (thrusting || boost) {
         ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
         const flameLength = boost ? 20 : 10;
         ctx.fillRect(-w/2 - flameLength, -h/4, flameLength, h/2);
+      }
+    }
+  },
+  fighter: {
+    id: 'fighter',
+    name: 'X-Fighter',
+    baseColor: '#ef4444',
+    width: 45,
+    height: 35,
+    draw: (ctx, w, h, color, thrusting, boost) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, 0);
+      ctx.lineTo(0, h / 2);
+      ctx.lineTo(-w / 2, h / 2);
+      ctx.lineTo(-w / 4, 0);
+      ctx.lineTo(-w / 2, -h / 2);
+      ctx.lineTo(0, -h / 2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.arc(w / 8, 0, w / 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (thrusting || boost) {
+        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
+        ctx.beginPath();
+        const flameLength = boost ? 25 : 15;
+        ctx.moveTo(-w / 4 + 5, -h / 4);
+        ctx.lineTo(-w / 2 - Math.random() * flameLength, -h / 4);
+        ctx.lineTo(-w / 2 + 5, -h / 4 + 5);
+        ctx.moveTo(-w / 4 + 5, h / 4);
+        ctx.lineTo(-w / 2 - Math.random() * flameLength, h / 4);
+        ctx.lineTo(-w / 2 + 5, h / 4 - 5);
+        ctx.stroke();
+      }
+    }
+  },
+  shuttle: {
+    id: 'shuttle',
+    name: 'Space Shuttle',
+    baseColor: '#f1f5f9',
+    width: 50,
+    height: 25,
+    draw: (ctx, w, h, color, thrusting, boost) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, 0);
+      ctx.lineTo(w / 4, h / 3);
+      ctx.lineTo(-w / 2, h / 2);
+      ctx.lineTo(-w / 3, 0);
+      ctx.lineTo(-w / 2, -h / 2);
+      ctx.lineTo(w / 4, -h / 3);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(-w/2, -h/4, w/6, h/2);
+
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.beginPath();
+      ctx.ellipse(w/3, 0, w/6, h/6, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      if (thrusting || boost) {
+        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
+        ctx.beginPath();
+        const flameLength = boost ? 30 : 20;
+        ctx.moveTo(-w / 3, 0);
+        ctx.lineTo(-w / 2 - Math.random() * flameLength - 10, 0);
+        ctx.lineTo(-w / 3, 5);
+        ctx.moveTo(-w / 3, 0);
+        ctx.lineTo(-w / 2 - Math.random() * flameLength - 10, 0);
+        ctx.lineTo(-w / 3, -5);
+        ctx.stroke();
+      }
+    }
+  },
+  cruiser: {
+    id: 'cruiser',
+    name: 'Star Cruiser',
+    baseColor: '#ec4899',
+    width: 55,
+    height: 40,
+    draw: (ctx, w, h, color, thrusting, boost) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, 0);
+      ctx.lineTo(0, h / 3);
+      ctx.lineTo(-w / 2, h / 2);
+      ctx.lineTo(-w / 8, h / 6);
+      ctx.lineTo(-w / 4, 0);
+      ctx.lineTo(-w / 8, -h / 6);
+      ctx.lineTo(-w / 2, -h / 2);
+      ctx.lineTo(0, -h / 3);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-w/4, 0);
+      ctx.lineTo(w/4, 0);
+      ctx.stroke();
+
+      if (thrusting || boost) {
+        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
+        ctx.beginPath();
+        const flameLength = boost ? 25 : 15;
+        ctx.moveTo(-w/8, -h/4);
+        ctx.lineTo(-w/2 - Math.random() * flameLength, -h/3);
+        ctx.lineTo(-w/6, -h/6);
+        ctx.moveTo(-w/8, h/4);
+        ctx.lineTo(-w/2 - Math.random() * flameLength, h/3);
+        ctx.lineTo(-w/6, h/6);
+        ctx.stroke();
       }
     }
   }
