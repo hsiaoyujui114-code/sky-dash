@@ -1748,43 +1748,39 @@ export default function Game() {
   // Helper to render ship preview in UI
   const renderShipPreview = (shipId: ShipType, isSelected: boolean) => {
     const ship = SHIPS[shipId];
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+      if (canvasRef.current) {
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.save();
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ship.draw(ctx, ship.width, ship.height, ship.baseColor, false, false);
+          ctx.restore();
+        }
+      }
+    }, [ship]);
+
     return (
       <button
         key={ship.id}
         onClick={(e) => { e.stopPropagation(); selectShip(ship.id); }}
         className={`relative flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-          isSelected 
-            ? 'bg-slate-800 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]' 
+          isSelected
+            ? 'bg-slate-800 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
             : 'bg-slate-900/50 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
         }`}
       >
-        <div className="w-16 h-16 flex items-center justify-center relative">
-          {/* Simple CSS representation of ships for the UI */}
-          {ship.id === 'classic' && (
-            <div className="w-0 h-0 border-t-[15px] border-t-transparent border-l-[30px] border-l-emerald-500 border-b-[15px] border-b-transparent" />
-          )}
-          {ship.id === 'stealth' && (
-            <div className="w-0 h-0 border-t-[10px] border-t-transparent border-l-[35px] border-l-indigo-500 border-b-[10px] border-b-transparent relative">
-              <div className="absolute -left-[25px] -top-[3px] w-2 h-2 bg-white/50 rounded-full" />
-            </div>
-          )}
-          {ship.id === 'saucer' && (
-            <div className="relative w-10 h-10 flex items-center justify-center">
-              <div className="absolute top-1 w-6 h-4 bg-green-300/80 rounded-t-full" />
-              <div className="absolute w-10 h-4 bg-pink-500 rounded-full" />
-              <div className="absolute flex gap-1 z-10">
-                <div className="w-1 h-1 bg-white rounded-full" />
-                <div className="w-1 h-1 bg-white rounded-full" />
-                <div className="w-1 h-1 bg-white rounded-full" />
-              </div>
-            </div>
-          )}
-          {ship.id === 'blocky' && (
-            <div className="w-8 h-8 bg-yellow-500 relative">
-              <div className="absolute right-1 top-1 w-2 h-2 bg-black" />
-            </div>
-          )}
-        </div>
+        <canvas
+          ref={canvasRef}
+          width={80}
+          height={80}
+          className="rounded-lg"
+        />
         <span className={`font-bold text-sm ${isSelected ? 'text-emerald-400' : 'text-slate-300'}`}>
           {ship.name}
         </span>
