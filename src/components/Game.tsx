@@ -40,6 +40,27 @@ const codeToSeed = (code: string): number => {
   return value / 233280;
 };
 
+const ShipPreviewCanvas: React.FC<{ ship: any; size: number }> = ({ ship, size }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ship.draw(ctx, ship.width, ship.height, ship.baseColor, false, false);
+        ctx.restore();
+      }
+    }
+  }, [ship]);
+
+  return <canvas ref={canvasRef} width={size} height={size} className="rounded-lg" />;
+};
+
 type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
 type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
 type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
@@ -1748,23 +1769,6 @@ export default function Game() {
   // Helper to render ship preview in UI
   const renderShipPreview = (shipId: ShipType, isSelected: boolean) => {
     const ship = SHIPS[shipId];
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    useEffect(() => {
-      if (canvasRef.current) {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#0f172a';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.save();
-          ctx.translate(canvas.width / 2, canvas.height / 2);
-          ship.draw(ctx, ship.width, ship.height, ship.baseColor, false, false);
-          ctx.restore();
-        }
-      }
-    }, [ship]);
-
     return (
       <button
         key={ship.id}
@@ -1775,12 +1779,7 @@ export default function Game() {
             : 'bg-slate-900/50 border-slate-700 hover:border-slate-500 hover:bg-slate-800'
         }`}
       >
-        <canvas
-          ref={canvasRef}
-          width={80}
-          height={80}
-          className="rounded-lg"
-        />
+        <ShipPreviewCanvas ship={ship} size={80} />
         <span className={`font-bold text-sm ${isSelected ? 'text-emerald-400' : 'text-slate-300'}`}>
           {ship.name}
         </span>
