@@ -2,475 +2,16 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Trophy, Shield, Zap, Star, Crosshair, Play, RotateCcw, History, X, Flag, ChevronRight, Plane, Rocket, Orbit, Users, HelpCircle, Sparkles, Clock } from 'lucide-react';
 import Peer, { DataConnection } from 'peerjs';
 
-class SeededRandom {
-  private seed: number;
-  constructor(seed: number) {
-    this.seed = seed;
-  }
-  next() {
-    this.seed = (this.seed * 9301 + 49297) % 233280;
-    return this.seed / 233280;
-  }
-}
-
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
-const GRAVITY = 0.5;
-const THRUST = -1.2;
-const MAX_FALL_SPEED = 10;
-const MAX_RISE_SPEED = -8;
-
-const generateWorldCode = (seed: number): string => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const rng = new SeededRandom(seed);
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(rng.next() * chars.length));
-  }
-  return code;
-};
-
-const codeToSeed = (code: string): number => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let value = 0;
-  for (let i = 0; i < code.length; i++) {
-    const index = chars.indexOf(code[i].toUpperCase());
-    value = (value * 36 + (index >= 0 ? index : 0)) % 233280;
-  }
-  return value / 233280;
-};
-
-const ShipPreviewCanvas: React.FC<{ ship: any; size: number }> = ({ ship, size }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (canvasRef.current) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ship.draw(ctx, ship.width, ship.height, ship.baseColor, false, false);
-        ctx.restore();
-      }
-    }
-  }, [ship]);
-
-  return <canvas ref={canvasRef} width={size} height={size} className="rounded-lg" />;
-};
-
-type GameState = 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover';
-type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
-type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
-type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky' | 'fighter' | 'shuttle' | 'cruiser';
-
-interface LevelConfig {
-  id: Difficulty;
-  name: string;
-  baseSpeed: number;
-  obstacleFrequency: number;
-  color: string;
-}
-
-const LEVELS: Record<Difficulty, LevelConfig> = {
-  easy: { id: 'easy', name: 'Easy', baseSpeed: 4, obstacleFrequency: 60, color: 'text-green-400' },
-  medium: { id: 'medium', name: 'Medium', baseSpeed: 6, obstacleFrequency: 45, color: 'text-yellow-400' },
-  hard: { id: 'hard', name: 'Hard', baseSpeed: 8, obstacleFrequency: 30, color: 'text-orange-400' },
-  expert: { id: 'expert', name: 'Expert', baseSpeed: 10, obstacleFrequency: 20, color: 'text-red-500' },
-  insane: { id: 'insane', name: 'Insane', baseSpeed: 13, obstacleFrequency: 15, color: 'text-rose-600' },
-  dungeon: { id: 'dungeon', name: 'CSIE Dungeon', baseSpeed: 7, obstacleFrequency: 25, color: 'text-purple-500' },
-};
-
-interface ShipConfig {
-  id: ShipType;
-  name: string;
-  baseColor: string;
-  width: number;
-  height: number;
-  draw: (ctx: CanvasRenderingContext2D, width: number, height: number, color: string, isThrusting: boolean, boost: boolean) => void;
-}
-
-const SHIPS: Record<ShipType, ShipConfig> = {
-  classic: {
-    id: 'classic',
-    name: 'Classic Dart',
-    baseColor: '#10b981',
-    width: 40,
-    height: 30,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, 0);
-      ctx.lineTo(-w / 2, h / 2);
-      ctx.lineTo(-w / 4, 0);
-      ctx.lineTo(-w / 2, -h / 2);
-      ctx.closePath();
-      ctx.fill();
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        ctx.beginPath();
-        const flameLength = boost ? 25 : 15;
-        ctx.moveTo(-w / 4, 0);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength - 5, 0);
-        ctx.lineTo(-w / 2, 5);
-        ctx.moveTo(-w / 4, 0);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength - 5, 0);
-        ctx.lineTo(-w / 2, -5);
-        ctx.stroke();
-      }
-    }
-  },
-  stealth: {
-    id: 'stealth',
-    name: 'Stealth Wing',
-    baseColor: '#6366f1',
-    width: 45,
-    height: 20,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, 0);
-      ctx.lineTo(-w / 2, h / 2);
-      ctx.lineTo(-w / 3, 0);
-      ctx.lineTo(-w / 2, -h / 2);
-      ctx.closePath();
-      ctx.fill();
-      
-      // Cockpit
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.beginPath();
-      ctx.ellipse(w/6, 0, w/6, h/6, 0, 0, Math.PI*2);
-      ctx.fill();
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        ctx.beginPath();
-        const flameLength = boost ? 30 : 20;
-        ctx.moveTo(-w / 3, 0);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength - 5, 0);
-        ctx.lineTo(-w / 2, 3);
-        ctx.moveTo(-w / 3, 0);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength - 5, 0);
-        ctx.lineTo(-w / 2, -3);
-        ctx.stroke();
-      }
-    }
-  },
-  saucer: {
-    id: 'saucer',
-    name: 'UFO Saucer',
-    baseColor: '#ec4899',
-    width: 36,
-    height: 36,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      // Dome
-      ctx.fillStyle = 'rgba(134, 239, 172, 0.8)';
-      ctx.beginPath();
-      ctx.arc(0, -h/6, w/3, Math.PI, 0);
-      ctx.fill();
-      
-      // Body
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, w/2, h/4, 0, 0, Math.PI*2);
-      ctx.fill();
-      
-      // Lights
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(-w/3, 0, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(0, h/6, 2, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(w/3, 0, 2, 0, Math.PI*2); ctx.fill();
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        ctx.beginPath();
-        const flameLength = boost ? 20 : 10;
-        ctx.moveTo(-w/4, h/4);
-        ctx.lineTo(-w/4 - Math.random() * flameLength, h/4 + Math.random() * 10);
-        ctx.moveTo(0, h/4);
-        ctx.lineTo(0 - Math.random() * flameLength, h/4 + Math.random() * 10);
-        ctx.moveTo(w/4, h/4);
-        ctx.lineTo(w/4 - Math.random() * flameLength, h/4 + Math.random() * 10);
-        ctx.stroke();
-      }
-    }
-  },
-  blocky: {
-    id: 'blocky',
-    name: 'Pixel Box',
-    baseColor: '#eab308',
-    width: 30,
-    height: 30,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(-w/2, -h/2, w, h);
-
-      ctx.fillStyle = '#000';
-      ctx.fillRect(w/4, -h/4, w/4, h/4); // Eye/Window
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        const flameLength = boost ? 20 : 10;
-        ctx.fillRect(-w/2 - flameLength, -h/4, flameLength, h/2);
-      }
-    }
-  },
-  fighter: {
-    id: 'fighter',
-    name: 'X-Fighter',
-    baseColor: '#ef4444',
-    width: 45,
-    height: 35,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, 0);
-      ctx.lineTo(0, h / 2);
-      ctx.lineTo(-w / 2, h / 2);
-      ctx.lineTo(-w / 4, 0);
-      ctx.lineTo(-w / 2, -h / 2);
-      ctx.lineTo(0, -h / 2);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.beginPath();
-      ctx.arc(w / 8, 0, w / 6, 0, Math.PI * 2);
-      ctx.fill();
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        ctx.beginPath();
-        const flameLength = boost ? 25 : 15;
-        ctx.moveTo(-w / 4 + 5, -h / 4);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength, -h / 4);
-        ctx.lineTo(-w / 2 + 5, -h / 4 + 5);
-        ctx.moveTo(-w / 4 + 5, h / 4);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength, h / 4);
-        ctx.lineTo(-w / 2 + 5, h / 4 - 5);
-        ctx.stroke();
-      }
-    }
-  },
-  shuttle: {
-    id: 'shuttle',
-    name: 'Space Shuttle',
-    baseColor: '#f1f5f9',
-    width: 50,
-    height: 25,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, 0);
-      ctx.lineTo(w / 4, h / 3);
-      ctx.lineTo(-w / 2, h / 2);
-      ctx.lineTo(-w / 3, 0);
-      ctx.lineTo(-w / 2, -h / 2);
-      ctx.lineTo(w / 4, -h / 3);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = '#dc2626';
-      ctx.fillRect(-w/2, -h/4, w/6, h/2);
-
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.beginPath();
-      ctx.ellipse(w/3, 0, w/6, h/6, 0, 0, Math.PI*2);
-      ctx.fill();
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        ctx.beginPath();
-        const flameLength = boost ? 30 : 20;
-        ctx.moveTo(-w / 3, 0);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength - 10, 0);
-        ctx.lineTo(-w / 3, 5);
-        ctx.moveTo(-w / 3, 0);
-        ctx.lineTo(-w / 2 - Math.random() * flameLength - 10, 0);
-        ctx.lineTo(-w / 3, -5);
-        ctx.stroke();
-      }
-    }
-  },
-  cruiser: {
-    id: 'cruiser',
-    name: 'Star Cruiser',
-    baseColor: '#ec4899',
-    width: 55,
-    height: 40,
-    draw: (ctx, w, h, color, thrusting, boost) => {
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(w / 2, 0);
-      ctx.lineTo(0, h / 3);
-      ctx.lineTo(-w / 2, h / 2);
-      ctx.lineTo(-w / 8, h / 6);
-      ctx.lineTo(-w / 4, 0);
-      ctx.lineTo(-w / 8, -h / 6);
-      ctx.lineTo(-w / 2, -h / 2);
-      ctx.lineTo(0, -h / 3);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-w/4, 0);
-      ctx.lineTo(w/4, 0);
-      ctx.stroke();
-
-      if (thrusting || boost) {
-        ctx.fillStyle = boost ? '#38bdf8' : '#f97316';
-        ctx.beginPath();
-        const flameLength = boost ? 25 : 15;
-        ctx.moveTo(-w/8, -h/4);
-        ctx.lineTo(-w/2 - Math.random() * flameLength, -h/3);
-        ctx.lineTo(-w/6, -h/6);
-        ctx.moveTo(-w/8, h/4);
-        ctx.lineTo(-w/2 - Math.random() * flameLength, h/3);
-        ctx.lineTo(-w/6, h/6);
-        ctx.stroke();
-      }
-    }
-  }
-};
-
-interface Player {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  vy: number;
-}
-
-interface Obstacle {
-  id: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  type: 'top' | 'bottom' | 'floating';
-}
-
-interface Item {
-  id: number;
-  x: number;
-  y: number;
-  radius: number;
-  type: ItemType;
-}
-
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  color: string;
-  size: number;
-}
-
-interface Bullet {
-  id: number;
-  x: number;
-  y: number;
-  vx: number;
-  width: number;
-  height: number;
-  type?: 'bullet' | 'missile';
-}
-
-interface ScoreRecord {
-  score: number;
-  level: string;
-  rank: string;
-  date: string;
-}
-
-// Simple Web Audio API sound generator
-const playSound = (type: 'coin' | 'powerup' | 'shoot' | 'explosion' | 'crash' | 'victory' | 'select') => {
-  try {
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return;
-    const audioCtx = new AudioContext();
-    const osc = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    const now = audioCtx.currentTime;
-    
-    if (type === 'coin') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, now);
-      osc.frequency.exponentialRampToValueAtTime(1760, now + 0.1);
-      gainNode.gain.setValueAtTime(0.1, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
-    } else if (type === 'powerup') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.linearRampToValueAtTime(880, now + 0.1);
-      osc.frequency.linearRampToValueAtTime(1320, now + 0.2);
-      gainNode.gain.setValueAtTime(0.1, now);
-      gainNode.gain.linearRampToValueAtTime(0.01, now + 0.2);
-      osc.start(now);
-      osc.stop(now + 0.2);
-    } else if (type === 'shoot') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.exponentialRampToValueAtTime(110, now + 0.1);
-      gainNode.gain.setValueAtTime(0.1, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
-    } else if (type === 'explosion') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(100, now);
-      osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
-      gainNode.gain.setValueAtTime(0.2, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-      osc.start(now);
-      osc.stop(now + 0.3);
-    } else if (type === 'crash') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(150, now);
-      osc.frequency.exponentialRampToValueAtTime(40, now + 0.5);
-      gainNode.gain.setValueAtTime(0.3, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-      osc.start(now);
-      osc.stop(now + 0.5);
-    } else if (type === 'victory') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.setValueAtTime(554.37, now + 0.2); // C#
-      osc.frequency.setValueAtTime(659.25, now + 0.4); // E
-      osc.frequency.setValueAtTime(880, now + 0.6);    // A
-      gainNode.gain.setValueAtTime(0.2, now);
-      gainNode.gain.linearRampToValueAtTime(0, now + 1.5);
-      osc.start(now);
-      osc.stop(now + 1.5);
-    } else if (type === 'select') {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(600, now);
-      osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
-      gainNode.gain.setValueAtTime(0.1, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
-    }
-  } catch (e) {
-    // Ignore audio errors
-  }
-};
+import { CANVAS_WIDTH, CANVAS_HEIGHT, GRAVITY, THRUST, MAX_FALL_SPEED, MAX_RISE_SPEED, LEVELS, SHIPS } from './game/constants';
+import { GameState, ItemType, Difficulty, ShipType, LevelConfig, ShipConfig, Player, Obstacle, Item, Particle, Bullet, ScoreRecord } from './game/types';
+import { SeededRandom, generateWorldCode, codeToSeed } from './game/utils';
+import { playSound } from './game/audio';
+import { ShipPreviewCanvas } from './game/ShipPreviewCanvas';
+import { sendGameStats, fetchLeaderboard } from './game/google';
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<GameState>('start');
+  const [gameState, setGameState] = useState<GameState>('name_input');
   const [showInstructions, setShowInstructions] = useState(false);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -502,6 +43,10 @@ export default function Game() {
   const [copiedWorldCode, setCopiedWorldCode] = useState(false);
   const [worldCodeInput, setWorldCodeInput] = useState('');
   const otherPlayersRef = useRef<Record<string, any>>({});
+
+  // Leaderboard states
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  const [leaderboardMode, setLeaderboardMode] = useState<'daily' | 'historical'>('daily');
   
   // Powerup timers (in frames, 60fps)
   const [powerups, setPowerups] = useState({
@@ -617,6 +162,15 @@ export default function Game() {
     }
     return { currentRank, nextRank, progress };
   };
+
+  const sendGameStatsToGoogleAppsScript = useCallback(async (finalScore: number, level: Difficulty) => {
+    await sendGameStats(playerName, finalScore, level, currentShip, getRank);
+  }, [playerName, currentShip]);
+
+  const fetchLeaderboardData = useCallback(async () => {
+    const data = await fetchLeaderboard(leaderboardMode);
+    setLeaderboardData(data);
+  }, [leaderboardMode]);
 
   const broadcastState = (state: any) => {
     connectionsRef.current.forEach(conn => {
@@ -1330,6 +884,7 @@ export default function Game() {
     setGameState('gameover');
     saveScore(scoreRef.current);
     setHighScore(prev => Math.max(prev, scoreRef.current));
+    sendGameStatsToGoogleAppsScript(scoreRef.current, currentLevel);
     spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#ef4444', 50);
   };
 
@@ -1339,6 +894,7 @@ export default function Game() {
     setGameState('victory');
     saveScore(scoreRef.current);
     setHighScore(prev => Math.max(prev, scoreRef.current));
+    sendGameStatsToGoogleAppsScript(scoreRef.current, currentLevel);
     spawnParticles(playerRef.current.x + playerRef.current.width / 2, playerRef.current.y + playerRef.current.height / 2, '#10b981', 100);
   };
 
@@ -1752,6 +1308,12 @@ export default function Game() {
     };
   }, [gameState]);
 
+  useEffect(() => {
+    if (gameState === 'leaderboard') {
+      fetchLeaderboardData();
+    }
+  }, [gameState, leaderboardMode, fetchLeaderboardData]);
+
   const handlePointerDown = () => {
     if (gameState === 'start') {
       setGameState('level_select');
@@ -1805,6 +1367,45 @@ export default function Game() {
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       />
+
+      {/* Name Input Screen */}
+      {gameState === 'name_input' && (
+        <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center">
+          <div className="flex flex-col items-center gap-6 bg-slate-800/50 p-12 rounded-3xl border border-slate-700 backdrop-blur-md">
+            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 to-cyan-500 tracking-tight">
+              SKY DASH
+            </h1>
+            <p className="text-xl text-slate-300 font-semibold">Enter Your Name</p>
+
+            <input
+              type="text"
+              value={playerName}
+              onChange={(e) => setPlayerName(e.target.value.slice(0, 20))}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && playerName.trim()) {
+                  setGameState('start');
+                }
+              }}
+              autoFocus
+              maxLength={20}
+              className="w-full max-w-xs bg-slate-900 border-2 border-slate-700 focus:border-emerald-500 rounded-xl px-6 py-4 text-white text-center text-xl focus:outline-none transition-colors"
+              placeholder="Type your name..."
+            />
+
+            <button
+              onClick={() => {
+                if (playerName.trim()) {
+                  setGameState('start');
+                }
+              }}
+              disabled={!playerName.trim()}
+              className="w-full max-w-xs bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-black text-lg px-6 py-4 rounded-xl transition-all hover:scale-105 disabled:hover:scale-100 cursor-pointer"
+            >
+              START
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Top HUD */}
       {gameState === 'playing' && (
@@ -1927,14 +1528,21 @@ export default function Game() {
               <Plane className="w-5 h-5" />
               <span className="font-bold">Hangar</span>
             </button>
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); setGameState('history'); }}
               className="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg border border-slate-600 flex items-center gap-2 transition-colors cursor-pointer"
             >
               <History className="w-5 h-5" />
               <span className="font-bold">History</span>
             </button>
-            <button 
+            <button
+              onClick={(e) => { e.stopPropagation(); setGameState('leaderboard'); }}
+              className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded-lg border border-yellow-400 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Trophy className="w-5 h-5" />
+              <span className="font-bold">Leaderboard</span>
+            </button>
+            <button
               onClick={(e) => { e.stopPropagation(); setShowInstructions(true); }}
               className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg border border-emerald-400 flex items-center gap-2 transition-colors cursor-pointer"
             >
@@ -2278,6 +1886,77 @@ export default function Game() {
                       </div>
                       <span className="text-xl font-bold text-yellow-500 font-mono">
                         {record.score.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leaderboard Screen */}
+      {gameState === 'leaderboard' && (
+        <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-md flex flex-col items-center justify-center p-8">
+          <div className="w-full max-w-3xl bg-slate-800 rounded-2xl border border-slate-700 flex flex-col h-[80%]">
+            <div className="flex justify-between items-center p-6 border-b border-slate-700">
+              <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                <Trophy className="w-6 h-6 text-yellow-400" />
+                Leaderboard
+              </h2>
+              <button
+                onClick={(e) => { e.stopPropagation(); setGameState('start'); }}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-8 h-8" />
+              </button>
+            </div>
+
+            <div className="flex gap-4 p-6 border-b border-slate-700 pointer-events-auto">
+              <button
+                onClick={(e) => { e.stopPropagation(); setLeaderboardMode('daily'); }}
+                className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+                  leaderboardMode === 'daily'
+                    ? 'bg-emerald-500 text-slate-900'
+                    : 'bg-slate-700 text-white hover:bg-slate-600'
+                }`}
+              >
+                Daily Top 10
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLeaderboardMode('historical'); }}
+                className={`px-4 py-2 rounded-lg font-bold transition-colors ${
+                  leaderboardMode === 'historical'
+                    ? 'bg-emerald-500 text-slate-900'
+                    : 'bg-slate-700 text-white hover:bg-slate-600'
+                }`}
+              >
+                Historical Top 10
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+              {leaderboardData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-slate-500 font-mono">
+                  Leaderboard data will appear here
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {leaderboardData.map((entry, index) => (
+                    <div
+                      key={index}
+                      className="flex justify-between items-center bg-slate-900/50 p-4 rounded-lg border border-slate-700/50"
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="text-slate-500 font-mono w-8">#{index + 1}</span>
+                        <div className="flex flex-col">
+                          <span className="text-slate-300 font-semibold">{entry.playerName}</span>
+                          <span className="text-slate-400 text-xs">{entry.date}</span>
+                        </div>
+                      </div>
+                      <span className="text-xl font-bold text-yellow-500 font-mono">
+                        {entry.score.toLocaleString()}
                       </span>
                     </div>
                   ))}
