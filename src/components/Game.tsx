@@ -1027,7 +1027,7 @@ export default function Game() {
     }
 
     // Multiplayer emit
-    if (isMultiplayerRef.current && frameCountRef.current % 3 === 0) {
+    if (isMultiplayerRef.current) {
       if (isHostRef.current) {
         // If host, handle directly
         hostHandleData(myPlayerIdRef.current, {
@@ -1555,8 +1555,6 @@ export default function Game() {
         e.preventDefault();
         if (gameState === "start") {
           setGameState("level_select");
-        } else if (gameState === "gameover" || gameState === "victory") {
-          startGame(currentLevel, true);
         } else if (
           gameState === "playing" ||
           gameState === "multiplayer_playing"
@@ -1593,8 +1591,6 @@ export default function Game() {
   const handlePointerDown = () => {
     if (gameState === "start") {
       setGameState("level_select");
-    } else if (gameState === "gameover" || gameState === "victory") {
-      startGame(currentLevel, true);
     } else if (gameState === "playing" || gameState === "multiplayer_playing") {
       isThrusting.current = true;
     }
@@ -2475,12 +2471,27 @@ export default function Game() {
             <span className="text-slate-400 font-mono mb-1">SCORE</span>
             <span className="text-4xl font-bold text-white mb-4">{score}</span>
             <div className="w-full h-px bg-slate-700 mb-4" />
-            <span className="text-slate-500 font-mono text-sm mb-1">BEST</span>
+            <span className="text-slate-500 font-mono text-sm mb-1">BEST ({LEVELS[currentLevel].name})</span>
             <span className="text-2xl font-bold text-yellow-500">
-              {highScore}
+              {Math.max(...history.filter(r => r.level === LEVELS[currentLevel].name).map(r => r.score), 0)}
             </span>
           </div>
           <div className="flex gap-4 pointer-events-auto">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (canvasRef.current) {
+                  const link = document.createElement('a');
+                  link.href = canvasRef.current.toDataURL('image/png');
+                  link.download = `sky-dash-${currentLevel}-${score}.png`;
+                  link.click();
+                }
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <Sparkles className="w-5 h-5" />
+              <span>SCREENSHOT</span>
+            </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -2499,7 +2510,7 @@ export default function Game() {
               className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
             >
               <RotateCcw className="w-5 h-5" />
-              <span>RETRY LEVEL</span>
+              <span>RETRY</span>
             </button>
           </div>
         </div>
@@ -2707,8 +2718,8 @@ export default function Game() {
                         id: myPlayerIdRef.current,
                         name: playerName,
                         color: SHIPS[currentShip].baseColor,
-                        progress: 0,
-                        trophies: 0,
+                        progress: scoreRef.current,
+                        trophies: trophiesRef.current,
                       }
                     : otherPlayersRef.current[playerId];
                 return p ? (
@@ -2737,7 +2748,7 @@ export default function Game() {
                     </div>
                     <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
                       <div
-                        className="h-full rounded-full transition-all duration-300"
+                        className="h-full rounded-full"
                         style={{
                           width: `${Math.min(100, (p.progress / multiplayerGoal) * 100)}%`,
                           backgroundColor: p.color,
