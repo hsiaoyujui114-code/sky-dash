@@ -65,7 +65,6 @@ export default function Game() {
   const [currentLevel, setCurrentLevel] = useState<Difficulty>("easy");
   const [currentShip, setCurrentShip] = useState<ShipType>("classic");
   const [progress, setProgress] = useState(0); // 0 to 100
-  const [isPracticeMode, setIsPracticeMode] = useState(false);
 
   // Multiplayer state
   const [peer, setPeer] = useState<Peer | null>(null);
@@ -537,7 +536,7 @@ export default function Game() {
   };
 
   const saveScore = (newScore: number) => {
-    if (newScore === 0 || isPracticeMode) return;
+    if (newScore === 0) return;
 
     const { currentRank } = getRank(newScore);
     const newRecord: ScoreRecord = {
@@ -566,10 +565,8 @@ export default function Game() {
     level: Difficulty,
     keepSeed: boolean = false,
     isMultiplayer: boolean = false,
-    isPractice: boolean = false,
   ) => {
     isMultiplayerRef.current = isMultiplayer;
-    setIsPracticeMode(isPractice);
     if (!keepSeed) {
       currentSeedRef.current = Math.floor(Math.random() * 233280);
     }
@@ -2234,39 +2231,6 @@ export default function Game() {
               </p>
             </div>
 
-            <h3 className="text-2xl font-bold text-emerald-400 mb-4 w-full max-w-2xl">
-              PRACTICE MODE
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mb-8">
-              {(Object.keys(LEVELS) as Difficulty[]).map((levelKey) => {
-                const level = LEVELS[levelKey];
-                return (
-                  <button
-                    key={`practice-${level.id}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startGame(level.id, false, false, true);
-                    }}
-                    className="bg-emerald-900/50 hover:bg-emerald-800/50 p-6 rounded-2xl border border-emerald-700 flex flex-col items-start gap-2 transition-all hover:scale-105 cursor-pointer group"
-                  >
-                    <div
-                      className={`text-2xl font-bold ${level.color} flex items-center justify-between w-full`}
-                    >
-                      {level.name}
-                      <ChevronRight className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                    <div className="text-slate-400 text-sm text-left">
-                      Speed: {level.baseSpeed}x <br />
-                      No Score Recorded
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <h3 className="text-2xl font-bold text-white mb-4 w-full max-w-2xl">
-              RANKED MODE
-            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
               {(Object.keys(LEVELS) as Difficulty[]).map((levelKey) => {
                 const level = LEVELS[levelKey];
@@ -2505,8 +2469,8 @@ export default function Game() {
 
       {gameState === "gameover" && (
         <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center pointer-events-none">
-          <h2 className={`text-5xl font-black mb-4 tracking-tight ${isPracticeMode ? 'text-emerald-400' : 'text-red-500'}`}>
-            {isPracticeMode ? 'PRACTICE COMPLETE!' : 'CRASHED!'}
+          <h2 className="text-5xl font-black text-red-500 mb-4 tracking-tight">
+            CRASHED!
           </h2>
           <div ref={scoreboardRef} className="flex flex-col items-center mb-8">
             <div className="flex flex-col items-center mb-6">
@@ -2527,66 +2491,64 @@ export default function Game() {
               </span>
             </div>
           </div>
-          {!isPracticeMode && (
-            <div className="flex gap-4 pointer-events-auto mb-4">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const bestScore = Math.max(...history.filter(r => r.level === LEVELS[currentLevel].name).map(r => r.score), 0);
-                  const canvas = document.createElement('canvas');
-                  canvas.width = 600;
-                  canvas.height = 500;
-                  const ctx = canvas.getContext('2d')!;
+          <div className="flex gap-4 pointer-events-auto mb-4">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const bestScore = Math.max(...history.filter(r => r.level === LEVELS[currentLevel].name).map(r => r.score), 0);
+                const canvas = document.createElement('canvas');
+                canvas.width = 600;
+                canvas.height = 500;
+                const ctx = canvas.getContext('2d')!;
 
-                  // Background
-                  ctx.fillStyle = '#0f172a';
-                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                // Background
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                  // Title
-                  ctx.fillStyle = '#ef4444';
-                  ctx.font = 'bold 48px Arial';
-                  ctx.textAlign = 'center';
-                  ctx.fillText('CRASHED!', canvas.width / 2, 80);
+                // Title
+                ctx.fillStyle = '#ef4444';
+                ctx.font = 'bold 48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('CRASHED!', canvas.width / 2, 80);
 
-                  // Trophy and Rank
-                  ctx.fillStyle = currentRank.color === 'text-red-500' ? '#ef4444' :
-                                  currentRank.color === 'text-orange-500' ? '#f97316' :
-                                  currentRank.color === 'text-yellow-500' ? '#eab308' :
-                                  currentRank.color === 'text-green-500' ? '#22c55e' :
-                                  currentRank.color === 'text-blue-500' ? '#3b82f6' : '#a78bfa';
-                  ctx.font = 'bold 32px Arial';
-                  ctx.fillText(`★ ${currentRank.name} ★`, canvas.width / 2, 150);
+                // Trophy and Rank
+                ctx.fillStyle = currentRank.color === 'text-red-500' ? '#ef4444' :
+                                currentRank.color === 'text-orange-500' ? '#f97316' :
+                                currentRank.color === 'text-yellow-500' ? '#eab308' :
+                                currentRank.color === 'text-green-500' ? '#22c55e' :
+                                currentRank.color === 'text-blue-500' ? '#3b82f6' : '#a78bfa';
+                ctx.font = 'bold 32px Arial';
+                ctx.fillText(`★ ${currentRank.name} ★`, canvas.width / 2, 150);
 
-                  // Score
-                  ctx.fillStyle = '#94a3b8';
-                  ctx.font = '14px monospace';
-                  ctx.textAlign = 'center';
-                  ctx.fillText('SCORE', canvas.width / 2, 230);
+                // Score
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('SCORE', canvas.width / 2, 230);
 
-                  ctx.fillStyle = '#ffffff';
-                  ctx.font = 'bold 48px Arial';
-                  ctx.fillText(String(score), canvas.width / 2, 280);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 48px Arial';
+                ctx.fillText(String(score), canvas.width / 2, 280);
 
-                  ctx.fillStyle = '#64748b';
-                  ctx.font = '12px monospace';
-                  ctx.fillText(`BEST (${LEVELS[currentLevel].name})`, canvas.width / 2, 325);
+                ctx.fillStyle = '#64748b';
+                ctx.font = '12px monospace';
+                ctx.fillText(`BEST (${LEVELS[currentLevel].name})`, canvas.width / 2, 325);
 
-                  ctx.fillStyle = '#eab308';
-                  ctx.font = 'bold 28px Arial';
-                  ctx.fillText(String(bestScore), canvas.width / 2, 360);
+                ctx.fillStyle = '#eab308';
+                ctx.font = 'bold 28px Arial';
+                ctx.fillText(String(bestScore), canvas.width / 2, 360);
 
-                  const link = document.createElement('a');
-                  link.href = canvas.toDataURL('image/png');
-                  link.download = `sky-dash-${currentLevel}-${score}.png`;
-                  link.click();
-                }}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
-              >
-                <Sparkles className="w-5 h-5" />
-                <span>SCREENSHOT</span>
-              </button>
-            </div>
-          )}
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = `sky-dash-${currentLevel}-${score}.png`;
+                link.click();
+              }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
+            >
+              <Sparkles className="w-5 h-5" />
+              <span>SCREENSHOT</span>
+            </button>
+          </div>
           <div className="flex gap-4 pointer-events-auto">
             <button
               onClick={(e) => {
@@ -2601,7 +2563,7 @@ export default function Game() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                startGame(currentLevel, true, false, isPracticeMode);
+                startGame(currentLevel, true);
               }}
               className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
             >
