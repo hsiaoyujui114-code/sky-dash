@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import html2canvas from "html2canvas";
 import {
   Trophy,
   Shield,
@@ -56,6 +57,7 @@ import {
 
 export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scoreboardRef = useRef<HTMLDivElement>(null);
   const [gameState, setGameState] = useState<GameState>("name_input");
   const [showInstructions, setShowInstructions] = useState(false);
   const [score, setScore] = useState(0);
@@ -1737,15 +1739,26 @@ export default function Game() {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              {powerups.shield > 0 && (
-                <div className="bg-blue-500/20 px-3 py-2 rounded-lg border border-blue-500/50 flex items-center gap-2 animate-pulse">
-                  <Shield className="w-5 h-5 text-blue-400" />
-                  <span className="text-blue-300 font-mono text-sm">
-                    {Math.ceil(powerups.shield / 60)}s
-                  </span>
-                </div>
-              )}
+            <div className="flex flex-col gap-2 items-end">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setGameState("level_select");
+                }}
+                className="bg-red-600/80 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold transition-all cursor-pointer pointer-events-auto flex items-center gap-2"
+              >
+                <X className="w-4 h-4" />
+                <span>EXIT</span>
+              </button>
+              <div className="flex gap-2 flex-wrap justify-end">
+                {powerups.shield > 0 && (
+                  <div className="bg-blue-500/20 px-3 py-2 rounded-lg border border-blue-500/50 flex items-center gap-2 animate-pulse">
+                    <Shield className="w-5 h-5 text-blue-400" />
+                    <span className="text-blue-300 font-mono text-sm">
+                      {Math.ceil(powerups.shield / 60)}s
+                    </span>
+                  </div>
+                )}
               {powerups.boost > 0 && (
                 <div className="bg-orange-500/20 px-3 py-2 rounded-lg border border-orange-500/50 flex items-center gap-2 animate-pulse">
                   <Zap className="w-5 h-5 text-orange-400" />
@@ -1786,6 +1799,7 @@ export default function Game() {
                   </span>
                 </div>
               )}
+              </div>
             </div>
           </div>
 
@@ -2459,32 +2473,41 @@ export default function Game() {
           <h2 className="text-5xl font-black text-red-500 mb-4 tracking-tight">
             CRASHED!
           </h2>
-          <div className="flex flex-col items-center mb-6">
-            <Trophy
-              className={`w-16 h-16 mb-2 ${currentRank.color} drop-shadow-lg`}
-            />
-            <p className={`text-2xl font-bold font-mono ${currentRank.color}`}>
-              Rank: {currentRank.name}
-            </p>
+          <div ref={scoreboardRef} className="flex flex-col items-center mb-8">
+            <div className="flex flex-col items-center mb-6">
+              <Trophy
+                className={`w-16 h-16 mb-2 ${currentRank.color} drop-shadow-lg`}
+              />
+              <p className={`text-2xl font-bold font-mono ${currentRank.color}`}>
+                Rank: {currentRank.name}
+              </p>
+            </div>
+            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 flex flex-col items-center min-w-[240px]">
+              <span className="text-slate-400 font-mono mb-1">SCORE</span>
+              <span className="text-4xl font-bold text-white mb-4">{score}</span>
+              <div className="w-full h-px bg-slate-700 mb-4" />
+              <span className="text-slate-500 font-mono text-sm mb-1">BEST ({LEVELS[currentLevel].name})</span>
+              <span className="text-2xl font-bold text-yellow-500">
+                {Math.max(...history.filter(r => r.level === LEVELS[currentLevel].name).map(r => r.score), 0)}
+              </span>
+            </div>
           </div>
-          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 mb-8 flex flex-col items-center min-w-[240px]">
-            <span className="text-slate-400 font-mono mb-1">SCORE</span>
-            <span className="text-4xl font-bold text-white mb-4">{score}</span>
-            <div className="w-full h-px bg-slate-700 mb-4" />
-            <span className="text-slate-500 font-mono text-sm mb-1">BEST ({LEVELS[currentLevel].name})</span>
-            <span className="text-2xl font-bold text-yellow-500">
-              {Math.max(...history.filter(r => r.level === LEVELS[currentLevel].name).map(r => r.score), 0)}
-            </span>
-          </div>
-          <div className="flex gap-4 pointer-events-auto">
+          <div className="flex gap-4 pointer-events-auto mb-4">
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                if (canvasRef.current) {
-                  const link = document.createElement('a');
-                  link.href = canvasRef.current.toDataURL('image/png');
-                  link.download = `sky-dash-${currentLevel}-${score}.png`;
-                  link.click();
+                if (scoreboardRef.current) {
+                  try {
+                    const canvas = await html2canvas(scoreboardRef.current, {
+                      backgroundColor: null,
+                    });
+                    const link = document.createElement('a');
+                    link.href = canvas.toDataURL('image/png');
+                    link.download = `sky-dash-${currentLevel}-${score}.png`;
+                    link.click();
+                  } catch (err) {
+                    console.error('Screenshot failed:', err);
+                  }
                 }
               }}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
@@ -2492,6 +2515,8 @@ export default function Game() {
               <Sparkles className="w-5 h-5" />
               <span>SCREENSHOT</span>
             </button>
+          </div>
+          <div className="flex gap-4 pointer-events-auto">
             <button
               onClick={(e) => {
                 e.stopPropagation();
