@@ -2520,13 +2520,7 @@ export default function Game() {
                 ctx.font = 'bold 32px Arial';
                 ctx.fillText(`★ ${currentRank.name} ★`, canvas.width / 2, 150);
 
-                // Score box
-                ctx.strokeStyle = '#475569';
-                ctx.lineWidth = 2;
-                ctx.fillStyle = '#1e293b';
-                ctx.fillRect(75, 200, 450, 150);
-                ctx.strokeRect(75, 200, 450, 150);
-
+                // Score
                 ctx.fillStyle = '#94a3b8';
                 ctx.font = '14px monospace';
                 ctx.textAlign = 'center';
@@ -2535,13 +2529,6 @@ export default function Game() {
                 ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 48px Arial';
                 ctx.fillText(String(score), canvas.width / 2, 280);
-
-                ctx.strokeStyle = '#334155';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.moveTo(100, 300);
-                ctx.lineTo(500, 300);
-                ctx.stroke();
 
                 ctx.fillStyle = '#64748b';
                 ctx.font = '12px monospace';
