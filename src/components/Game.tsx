@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import html2canvas from "html2canvas";
 import {
   Trophy,
   Shield,
@@ -2494,21 +2493,68 @@ export default function Game() {
           </div>
           <div className="flex gap-4 pointer-events-auto mb-4">
             <button
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.stopPropagation();
-                if (scoreboardRef.current) {
-                  try {
-                    const canvas = await html2canvas(scoreboardRef.current, {
-                      backgroundColor: null,
-                    });
-                    const link = document.createElement('a');
-                    link.href = canvas.toDataURL('image/png');
-                    link.download = `sky-dash-${currentLevel}-${score}.png`;
-                    link.click();
-                  } catch (err) {
-                    console.error('Screenshot failed:', err);
-                  }
-                }
+                const bestScore = Math.max(...history.filter(r => r.level === LEVELS[currentLevel].name).map(r => r.score), 0);
+                const canvas = document.createElement('canvas');
+                canvas.width = 600;
+                canvas.height = 500;
+                const ctx = canvas.getContext('2d')!;
+
+                // Background
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Title
+                ctx.fillStyle = '#ef4444';
+                ctx.font = 'bold 48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('CRASHED!', canvas.width / 2, 80);
+
+                // Trophy and Rank
+                ctx.fillStyle = currentRank.color === 'text-red-500' ? '#ef4444' :
+                                currentRank.color === 'text-orange-500' ? '#f97316' :
+                                currentRank.color === 'text-yellow-500' ? '#eab308' :
+                                currentRank.color === 'text-green-500' ? '#22c55e' :
+                                currentRank.color === 'text-blue-500' ? '#3b82f6' : '#a78bfa';
+                ctx.font = 'bold 32px Arial';
+                ctx.fillText(`★ ${currentRank.name} ★`, canvas.width / 2, 150);
+
+                // Score box
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 2;
+                ctx.fillStyle = '#1e293b';
+                ctx.fillRect(75, 200, 450, 150);
+                ctx.strokeRect(75, 200, 450, 150);
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '14px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('SCORE', canvas.width / 2, 230);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 48px Arial';
+                ctx.fillText(String(score), canvas.width / 2, 280);
+
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(100, 300);
+                ctx.lineTo(500, 300);
+                ctx.stroke();
+
+                ctx.fillStyle = '#64748b';
+                ctx.font = '12px monospace';
+                ctx.fillText(`BEST (${LEVELS[currentLevel].name})`, canvas.width / 2, 325);
+
+                ctx.fillStyle = '#eab308';
+                ctx.font = 'bold 28px Arial';
+                ctx.fillText(String(bestScore), canvas.width / 2, 360);
+
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/png');
+                link.download = `sky-dash-${currentLevel}-${score}.png`;
+                link.click();
               }}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-full font-bold transition-all hover:scale-105 cursor-pointer"
             >
