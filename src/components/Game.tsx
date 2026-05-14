@@ -2405,6 +2405,14 @@ export default function Game() {
                           <span className="text-slate-400 text-xs">
                             {entry.date}
                           </span>
+                          <div className="flex gap-2 text-xs font-mono mt-1">
+                            <span className="text-emerald-400">
+                              [{entry.level}]
+                            </span>
+                            <span className="text-cyan-400">
+                              {entry.rank}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <span className="text-xl font-bold text-yellow-500 font-mono">
