@@ -79,6 +79,8 @@ export default function Game() {
   const roomIdRef = useRef("");
   const isMultiplayerRef = useRef(false);
   const [playerName, setPlayerName] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminAuthError, setAdminAuthError] = useState("");
   const [roomState, setRoomState] = useState<any>(null);
   const roomStateRef = useRef<any>(null);
   const [multiplayerGoal, setMultiplayerGoal] = useState(5000);
@@ -1660,9 +1662,22 @@ export default function Game() {
             <input
               type="text"
               value={playerName}
-              onChange={(e) => setPlayerName(e.target.value.slice(0, 20))}
+              onChange={(e) => {
+                const newName = e.target.value.slice(0, 20);
+                setPlayerName(newName);
+                setAdminAuthError("");
+              }}
               onKeyPress={(e) => {
-                if (e.key === "Enter" && playerName.trim()) {
+                if (playerName === "管理員") {
+                  if (e.key === "Enter" && adminPassword) {
+                    if (adminPassword === "skydash") {
+                      setGameState("start");
+                    } else {
+                      setAdminAuthError("密碼錯誤");
+                      setAdminPassword("");
+                    }
+                  }
+                } else if (e.key === "Enter" && playerName.trim()) {
                   setGameState("start");
                 }
               }}
@@ -1672,13 +1687,52 @@ export default function Game() {
               placeholder="Type your name..."
             />
 
+            {playerName === "管理員" && (
+              <div className="w-full flex flex-col gap-3">
+                <input
+                  type="password"
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    setAdminAuthError("");
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && adminPassword) {
+                      if (adminPassword === "skydash") {
+                        setGameState("start");
+                      } else {
+                        setAdminAuthError("密碼錯誤");
+                        setAdminPassword("");
+                      }
+                    }
+                  }}
+                  className="w-full max-w-xs bg-slate-900 border-2 border-slate-700 focus:border-emerald-500 rounded-xl px-6 py-4 text-white text-center text-xl focus:outline-none transition-colors"
+                  placeholder="Enter password..."
+                />
+                {adminAuthError && (
+                  <p className="text-red-400 text-center font-semibold">
+                    {adminAuthError}
+                  </p>
+                )}
+              </div>
+            )}
+
             <button
               onClick={() => {
-                if (playerName.trim()) {
+                if (playerName === "管理員") {
+                  if (adminPassword) {
+                    if (adminPassword === "skydash") {
+                      setGameState("start");
+                    } else {
+                      setAdminAuthError("密碼錯誤");
+                      setAdminPassword("");
+                    }
+                  }
+                } else if (playerName.trim()) {
                   setGameState("start");
                 }
               }}
-              disabled={!playerName.trim()}
+              disabled={playerName === "管理員" ? !adminPassword : !playerName.trim()}
               className="w-full max-w-xs bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 font-black text-lg px-6 py-4 rounded-xl transition-all hover:scale-105 disabled:hover:scale-100 cursor-pointer"
             >
               START
@@ -1742,6 +1796,7 @@ export default function Game() {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  sendGameStatsToGoogleAppsScript(scoreRef.current, currentLevel);
                   setGameState("level_select");
                 }}
                 className="bg-red-600/80 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-bold transition-all cursor-pointer pointer-events-auto flex items-center gap-2"
@@ -1751,9 +1806,9 @@ export default function Game() {
               </button>
               <div className="flex gap-2 flex-wrap justify-end">
                 {powerups.shield > 0 && (
-                  <div className="bg-blue-500/20 px-3 py-2 rounded-lg border border-blue-500/50 flex items-center gap-2 animate-pulse">
-                    <Shield className="w-5 h-5 text-blue-400" />
-                    <span className="text-blue-300 font-mono text-sm">
+                  <div className="px-3 py-2 rounded-lg border flex items-center gap-2 shield-active">
+                    <Shield className={`w-5 h-5 ${powerups.shield > 120 ? 'text-blue-400' : powerups.shield > 60 ? 'text-purple-400' : 'text-pink-400'}`} />
+                    <span className={`font-mono text-sm ${powerups.shield > 120 ? 'text-blue-300' : powerups.shield > 60 ? 'text-purple-300' : 'text-pink-300'}`}>
                       {Math.ceil(powerups.shield / 60)}s
                     </span>
                   </div>
