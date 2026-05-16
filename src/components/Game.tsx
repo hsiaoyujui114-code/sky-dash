@@ -81,6 +81,8 @@ export default function Game() {
   const [playerName, setPlayerName] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [adminAuthError, setAdminAuthError] = useState("");
+  const [adminSeedInput, setAdminSeedInput] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [roomState, setRoomState] = useState<any>(null);
   const roomStateRef = useRef<any>(null);
   const [multiplayerGoal, setMultiplayerGoal] = useState(5000);
@@ -135,6 +137,7 @@ export default function Game() {
   const obstacleIdCounter = useRef(0);
   const itemIdCounter = useRef(0);
   const bulletIdCounter = useRef(0);
+  const portalTimerRef = useRef<number | null>(null);
 
   const powerupsRef = useRef({
     shield: 0,
@@ -599,6 +602,7 @@ export default function Game() {
     scoreRef.current = 0;
     trophiesRef.current = 0;
     speedRef.current = LEVELS[level].baseSpeed;
+    portalTimerRef.current = null;
     powerupsRef.current = {
       shield: 0,
       boost: 0,
@@ -655,6 +659,13 @@ export default function Game() {
     const config = LEVELS[currentLevel];
 
     frameCountRef.current++;
+
+    // Check portal survival reward
+    if (portalTimerRef.current !== null && frameCountRef.current >= portalTimerRef.current) {
+      scoreRef.current += 1000;
+      setScore(scoreRef.current);
+      portalTimerRef.current = null;
+    }
 
     // Update Progress (Rank)
     if (frameCountRef.current % 10 === 0) {
@@ -977,6 +988,7 @@ export default function Game() {
           player.y = newY;
           player.vy = 0;
           spawnParticles(item.x, item.y, "#a855f7", 30);
+          portalTimerRef.current = frameCountRef.current + 600;
         } else {
           playSound("powerup");
           if (item.type === "shield") {
@@ -1699,7 +1711,8 @@ export default function Game() {
                   onKeyPress={(e) => {
                     if (e.key === "Enter" && adminPassword) {
                       if (adminPassword === "skydash") {
-                        setGameState("start");
+                        setIsAdmin(true);
+                        setGameState("admin_seed_select");
                       } else {
                         setAdminAuthError("密碼錯誤");
                         setAdminPassword("");
@@ -1722,7 +1735,8 @@ export default function Game() {
                 if (playerName === "管理員") {
                   if (adminPassword) {
                     if (adminPassword === "skydash") {
-                      setGameState("start");
+                      setIsAdmin(true);
+                      setGameState("admin_seed_select");
                     } else {
                       setAdminAuthError("密碼錯誤");
                       setAdminPassword("");
@@ -1737,6 +1751,73 @@ export default function Game() {
             >
               START
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Seed Select Screen */}
+      {gameState === "admin_seed_select" && (
+        <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center">
+          <div className="flex flex-col items-center gap-6 bg-slate-800/50 p-12 rounded-3xl border border-slate-700 backdrop-blur-md max-w-md">
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 to-cyan-500 tracking-tight">
+              ADMIN MODE
+            </h1>
+            <p className="text-lg text-slate-300 font-semibold text-center">
+              Enter World Seed or Leave Empty for Random
+            </p>
+
+            <input
+              type="text"
+              value={adminSeedInput}
+              onChange={(e) => setAdminSeedInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") {
+                  if (adminSeedInput.trim()) {
+                    const seed = parseInt(adminSeedInput, 10);
+                    if (!isNaN(seed)) {
+                      currentSeedRef.current = seed;
+                      rngRef.current = new SeededRandom(seed);
+                      setGameState("level_select");
+                    }
+                  } else {
+                    setGameState("level_select");
+                  }
+                }
+              }}
+              autoFocus
+              className="w-full bg-slate-900 border-2 border-slate-700 focus:border-emerald-500 rounded-xl px-6 py-4 text-white text-center text-xl focus:outline-none transition-colors"
+              placeholder="Enter seed number (0-233279) or leave blank..."
+            />
+
+            <div className="flex gap-3 w-full">
+              <button
+                onClick={() => {
+                  if (adminSeedInput.trim()) {
+                    const seed = parseInt(adminSeedInput, 10);
+                    if (!isNaN(seed) && seed >= 0 && seed < 233280) {
+                      currentSeedRef.current = seed;
+                      rngRef.current = new SeededRandom(seed);
+                      setGameState("level_select");
+                    }
+                  } else {
+                    setGameState("level_select");
+                  }
+                }}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-lg px-6 py-4 rounded-xl transition-all hover:scale-105 cursor-pointer"
+              >
+                CONTINUE
+              </button>
+              <button
+                onClick={() => {
+                  setGameState("name_input");
+                  setAdminSeedInput("");
+                  setIsAdmin(false);
+                }}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-black text-lg px-6 py-4 rounded-xl transition-all hover:scale-105 cursor-pointer"
+              >
+                BACK
+              </button>
+            </div>
           </div>
         </div>
       )}

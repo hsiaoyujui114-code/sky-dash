@@ -1,4 +1,4 @@
-export type GameState = 'name_input' | 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover' | 'leaderboard';
+export type GameState = 'name_input' | 'start' | 'playing' | 'gameover' | 'victory' | 'history' | 'level_select' | 'ship_select' | 'multiplayer_lobby' | 'multiplayer_playing' | 'multiplayer_gameover' | 'leaderboard' | 'admin_seed_select';
 export type ItemType = 'coin' | 'shield' | 'boost' | 'double_score' | 'weapon' | 'star' | 'slow' | 'missile' | 'portal' | 'trophy';
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'expert' | 'insane' | 'dungeon';
 export type ShipType = 'classic' | 'stealth' | 'saucer' | 'blocky' | 'fighter' | 'shuttle' | 'cruiser';
