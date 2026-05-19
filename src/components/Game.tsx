@@ -1830,6 +1830,22 @@ export default function Game() {
       {/* Admin Map Editor - Visual Editor Mode */}
       {gameState === "admin_map_editor" && editMode && (
         <div className="absolute inset-0 bg-slate-950 flex flex-col">
+          {/* Header */}
+          <div className="bg-slate-900 border-b border-slate-700 p-4 flex justify-between items-center">
+            <h2 className="text-xl font-black text-emerald-400">
+              地圖編輯器 - {editMode === 'place-item' ? '放置物品' : '放置障礙'}
+            </h2>
+            <button
+              onClick={() => {
+                setEditMode(null);
+              }}
+              className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-lg font-bold text-lg transition-all hover:scale-105 flex items-center gap-2"
+            >
+              <X className="w-5 h-5" />
+              <span>返回 (BACK)</span>
+            </button>
+          </div>
+
           {/* Canvas Area */}
           <div className="relative flex-1">
             <canvas
@@ -1855,8 +1871,8 @@ export default function Game() {
               {customMapElements.map((elem) => (
                 <div
                   key={elem.id}
-                  className={`absolute w-8 h-8 rounded cursor-pointer ${
-                    selectedElement === elem.id ? 'ring-2 ring-yellow-400' : ''
+                  className={`absolute w-8 h-8 rounded cursor-pointer transition-all ${
+                    selectedElement === elem.id ? 'ring-2 ring-yellow-400 scale-125' : ''
                   } ${elem.type === 'item' ? 'bg-emerald-500' : 'bg-orange-500'}`}
                   style={{
                     left: `${(elem.x / CANVAS_WIDTH) * 100}%`,
@@ -1864,7 +1880,10 @@ export default function Game() {
                     transform: 'translate(-50%, -50%)',
                     pointerEvents: 'auto'
                   }}
-                  onClick={() => setSelectedElement(elem.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedElement(elem.id);
+                  }}
                   title={elem.type === 'item' ? elem.itemType : elem.obstacleType}
                 />
               ))}
@@ -1901,10 +1920,16 @@ export default function Game() {
 
           {/* Control Panel */}
           <div className="bg-slate-900 border-t border-slate-700 p-4 flex justify-between items-center">
-            <div className="text-slate-300">
-              模式: <span className="text-emerald-400 font-bold">{editMode === 'place-item' ? '放置物品' : '放置障礙'}</span>
-              | 已選: <span className="text-yellow-400 font-bold">{selectedElement ? '1' : '0'}</span>
-              | 總數: <span className="text-cyan-400 font-bold">{customMapElements.length}</span>
+            <div className="text-slate-300 flex gap-6">
+              <span>
+                模式: <span className="text-emerald-400 font-bold">{editMode === 'place-item' ? '放置物品' : '放置障礙'}</span>
+              </span>
+              <span>
+                已選: <span className="text-yellow-400 font-bold">{selectedElement ? '1' : '0'}</span>
+              </span>
+              <span>
+                總數: <span className="text-cyan-400 font-bold">{customMapElements.length}</span>
+              </span>
             </div>
             <div className="flex gap-2">
               {selectedElement && (
@@ -1913,18 +1938,16 @@ export default function Game() {
                     setCustomMapElements(customMapElements.filter(e => e.id !== selectedElement));
                     setSelectedElement(null);
                   }}
-                  className="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded font-bold"
+                  className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-lg font-bold transition-all hover:scale-105"
                 >
-                  刪除
+                  刪除選中
                 </button>
               )}
               <button
-                onClick={() => {
-                  setEditMode(null);
-                }}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-2 rounded font-bold"
+                onClick={() => setCustomMapElements([])}
+                className="bg-orange-600 hover:bg-orange-500 text-white px-6 py-2 rounded-lg font-bold transition-all hover:scale-105"
               >
-                完成編輯
+                清空全部
               </button>
             </div>
           </div>
