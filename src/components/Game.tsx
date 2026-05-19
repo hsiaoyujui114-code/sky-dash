@@ -83,6 +83,11 @@ export default function Game() {
   const [adminAuthError, setAdminAuthError] = useState("");
   const [adminSeedInput, setAdminSeedInput] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminMapDensity, setAdminMapDensity] = useState(1);
+  const [adminMapSeed, setAdminMapSeed] = useState("");
+  const [customMapElements, setCustomMapElements] = useState<Array<{type: 'item' | 'obstacle', itemType?: string, obstacleType?: 'top' | 'bottom' | 'floating', x: number, y: number, id: string}>>([]);
+  const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState<'place-item' | 'place-obstacle' | null>(null);
   const [roomState, setRoomState] = useState<any>(null);
   const roomStateRef = useRef<any>(null);
   const [multiplayerGoal, setMultiplayerGoal] = useState(5000);
@@ -274,7 +279,7 @@ export default function Game() {
     async (finalScore: number, level: Difficulty) => {
       await sendGameStats(playerName, finalScore, level, currentShip, getRank);
     },
-    [playerName, currentShip],
+    [playerName, currentShip, getRank],
   );
 
   const fetchLeaderboardData = useCallback(async () => {
@@ -1777,10 +1782,10 @@ export default function Game() {
                     if (!isNaN(seed)) {
                       currentSeedRef.current = seed;
                       rngRef.current = new SeededRandom(seed);
-                      setGameState("level_select");
+                      setGameState("admin_map_editor");
                     }
                   } else {
-                    setGameState("level_select");
+                    setGameState("admin_map_editor");
                   }
                 }
               }}
@@ -1797,10 +1802,10 @@ export default function Game() {
                     if (!isNaN(seed) && seed >= 0 && seed < 233280) {
                       currentSeedRef.current = seed;
                       rngRef.current = new SeededRandom(seed);
-                      setGameState("level_select");
+                      setGameState("admin_map_editor");
                     }
                   } else {
-                    setGameState("level_select");
+                    setGameState("admin_map_editor");
                   }
                 }}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-lg px-6 py-4 rounded-xl transition-all hover:scale-105 cursor-pointer"
@@ -1817,6 +1822,251 @@ export default function Game() {
               >
                 BACK
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Map Editor - Visual Editor Mode */}
+      {gameState === "admin_map_editor" && editMode && (
+        <div className="absolute inset-0 bg-slate-950 flex flex-col">
+          {/* Canvas Area */}
+          <div className="relative flex-1">
+            <canvas
+              ref={canvasRef}
+              width={CANVAS_WIDTH}
+              height={CANVAS_HEIGHT}
+              className="w-full h-full block"
+            />
+
+            {/* Overlay Grid and Elements */}
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Grid */}
+              <svg className="w-full h-full opacity-20">
+                <defs>
+                  <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+                    <path d="M 50 0 L 0 0 0 50" fill="none" stroke="white" strokeWidth="1"/>
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+              </svg>
+
+              {/* Placed Elements */}
+              {customMapElements.map((elem) => (
+                <div
+                  key={elem.id}
+                  className={`absolute w-8 h-8 rounded cursor-pointer ${
+                    selectedElement === elem.id ? 'ring-2 ring-yellow-400' : ''
+                  } ${elem.type === 'item' ? 'bg-emerald-500' : 'bg-orange-500'}`}
+                  style={{
+                    left: `${(elem.x / CANVAS_WIDTH) * 100}%`,
+                    top: `${(elem.y / CANVAS_HEIGHT) * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    pointerEvents: 'auto'
+                  }}
+                  onClick={() => setSelectedElement(elem.id)}
+                  title={elem.type === 'item' ? elem.itemType : elem.obstacleType}
+                />
+              ))}
+            </div>
+
+            {/* Click to Place Overlay */}
+            <div
+              className="absolute inset-0 cursor-crosshair"
+              onClick={(e) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH;
+                const y = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT;
+
+                if (editMode === 'place-item') {
+                  setCustomMapElements([...customMapElements, {
+                    type: 'item',
+                    itemType: 'shield',
+                    x,
+                    y,
+                    id: `item-${Date.now()}`
+                  }]);
+                } else if (editMode === 'place-obstacle') {
+                  setCustomMapElements([...customMapElements, {
+                    type: 'obstacle',
+                    obstacleType: 'floating',
+                    x,
+                    y,
+                    id: `obstacle-${Date.now()}`
+                  }]);
+                }
+              }}
+            />
+          </div>
+
+          {/* Control Panel */}
+          <div className="bg-slate-900 border-t border-slate-700 p-4 flex justify-between items-center">
+            <div className="text-slate-300">
+              模式: <span className="text-emerald-400 font-bold">{editMode === 'place-item' ? '放置物品' : '放置障礙'}</span>
+              | 已選: <span className="text-yellow-400 font-bold">{selectedElement ? '1' : '0'}</span>
+              | 總數: <span className="text-cyan-400 font-bold">{customMapElements.length}</span>
+            </div>
+            <div className="flex gap-2">
+              {selectedElement && (
+                <button
+                  onClick={() => {
+                    setCustomMapElements(customMapElements.filter(e => e.id !== selectedElement));
+                    setSelectedElement(null);
+                  }}
+                  className="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded font-bold"
+                >
+                  刪除
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setEditMode(null);
+                }}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-2 rounded font-bold"
+              >
+                完成編輯
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Map Editor - Configuration Screen */}
+      {gameState === "admin_map_editor" && !editMode && (
+        <div className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm flex flex-col items-center justify-center p-4">
+          <div className="flex flex-col items-center gap-6 bg-slate-800/50 p-12 rounded-3xl border border-slate-700 backdrop-blur-md max-w-2xl">
+            <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 to-cyan-500 tracking-tight">
+              MAP EDITOR
+            </h1>
+
+            <div className="w-full space-y-6">
+              {/* Density Configuration */}
+              <div className="space-y-3">
+                <label className="text-slate-300 font-semibold">物品密度 (Item Density)</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="3"
+                    step="0.1"
+                    value={adminMapDensity}
+                    onChange={(e) => setAdminMapDensity(parseFloat(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="text-white font-mono text-lg w-12">{adminMapDensity.toFixed(1)}x</span>
+                </div>
+              </div>
+
+              {/* Seed Configuration */}
+              <div className="space-y-3">
+                <label className="text-slate-300 font-semibold">地圖種子 (Map Seed)</label>
+                <input
+                  type="text"
+                  value={adminMapSeed}
+                  onChange={(e) => setAdminMapSeed(e.target.value)}
+                  className="w-full bg-slate-900 border-2 border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-white focus:outline-none transition-colors"
+                  placeholder="Optional: leave blank for current seed"
+                />
+              </div>
+
+              {/* Element Count */}
+              <div className="bg-slate-700/50 rounded-xl p-4">
+                <p className="text-slate-300 text-sm">
+                  已放置元素：<span className="text-emerald-400 font-bold">{customMapElements.length}</span>
+                </p>
+              </div>
+
+              {/* Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => {
+                    // Generate random items based on density
+                    const rng = new SeededRandom(currentSeedRef.current);
+                    const newElements = [];
+                    const itemCount = Math.floor(20 * adminMapDensity);
+                    const itemTypes: Array<string> = ['shield', 'boost', 'double_score', 'weapon', 'star', 'slow', 'missile', 'portal', 'trophy'];
+
+                    for (let i = 0; i < itemCount; i++) {
+                      newElements.push({
+                        type: 'item' as const,
+                        itemType: itemTypes[Math.floor(rng.random() * itemTypes.length)],
+                        x: Math.floor(rng.random() * (CANVAS_WIDTH - 100)) + 50,
+                        y: Math.floor(rng.random() * (CANVAS_HEIGHT - 100)) + 50,
+                        id: `item-${i}`
+                      });
+                    }
+
+                    // Generate obstacles based on density
+                    const obstacleCount = Math.floor(15 * adminMapDensity);
+                    const obstacleTypes: Array<'top' | 'bottom' | 'floating'> = ['top', 'bottom', 'floating'];
+
+                    for (let i = 0; i < obstacleCount; i++) {
+                      newElements.push({
+                        type: 'obstacle' as const,
+                        obstacleType: obstacleTypes[Math.floor(rng.random() * obstacleTypes.length)],
+                        x: Math.floor(rng.random() * (CANVAS_WIDTH - 100)) + 50,
+                        y: Math.floor(rng.random() * (CANVAS_HEIGHT - 100)) + 50,
+                        id: `obstacle-${i}`
+                      });
+                    }
+
+                    setCustomMapElements(newElements);
+                  }}
+                  className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-black py-3 rounded-xl transition-all hover:scale-105 cursor-pointer"
+                >
+                  自動生成 (Auto Generate)
+                </button>
+                <button
+                  onClick={() => {
+                    setCustomMapElements([]);
+                  }}
+                  className="bg-red-600 hover:bg-red-500 text-white font-black py-3 rounded-xl transition-all hover:scale-105 cursor-pointer"
+                >
+                  清空 (Clear)
+                </button>
+                <button
+                  onClick={() => {
+                    setEditMode('place-item');
+                  }}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-xl transition-all hover:scale-105 cursor-pointer"
+                >
+                  放置物品 (Place Items)
+                </button>
+                <button
+                  onClick={() => {
+                    setEditMode('place-obstacle');
+                  }}
+                  className="bg-orange-500 hover:bg-orange-400 text-slate-900 font-black py-3 rounded-xl transition-all hover:scale-105 cursor-pointer"
+                >
+                  放置障礙 (Place Obstacles)
+                </button>
+              </div>
+
+              {/* Navigation */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setGameState("level_select");
+                    setCustomMapElements([]);
+                    setAdminMapDensity(1);
+                    setAdminMapSeed("");
+                  }}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-xl transition-all hover:scale-105 cursor-pointer"
+                >
+                  開始遊戲 (Start Game)
+                </button>
+                <button
+                  onClick={() => {
+                    setGameState("admin_seed_select");
+                    setCustomMapElements([]);
+                    setAdminMapDensity(1);
+                    setAdminMapSeed("");
+                  }}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-black py-3 rounded-xl transition-all hover:scale-105 cursor-pointer"
+                >
+                  返回 (Back)
+                </button>
+              </div>
             </div>
           </div>
         </div>

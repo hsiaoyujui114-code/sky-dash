@@ -11,32 +11,39 @@ export const sendGameStats = async (
   currentShip: ShipType,
   getRank: (score: number) => { currentRank: { name: string } },
 ): Promise<void> => {
-  if (!playerName.trim()) return;
+  if (!playerName.trim()) {
+    console.warn("⚠️ Player name is empty, skipping API call");
+    return;
+  }
 
   const currentRankData = getRank(finalScore);
 
+  const payload = {
+    table: "leaderboard",
+    data: {
+      playerName: playerName.trim(),
+      score: finalScore,
+      level: level,
+      ship: currentShip,
+      date: new Date().toISOString(),
+      rank: currentRankData.currentRank.name,
+    },
+  };
+
+  console.log("📤 Sending game stats:", payload);
+
   try {
-    await fetch(GOOGLE_APPS_SCRIPT_URL, {
+    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({
-        table: "leaderboard",
-        data: {
-          playerName: playerName.trim(),
-          score: finalScore,
-          level: level,
-          ship: currentShip,
-          date: new Date().toISOString(),
-          rank: currentRankData.currentRank.name,
-        },
-      }),
+      body: JSON.stringify(payload),
       redirect: "follow",
       mode: "no-cors",
     });
 
-    console.log("✅ Game stats sent");
+    console.log("✅ Game stats API response status:", response.status);
   } catch (error) {
-    console.error("Failed to send game stats:", error);
+    console.error("❌ Failed to send game stats:", error);
   }
 };
 
