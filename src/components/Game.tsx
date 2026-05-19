@@ -1829,7 +1829,7 @@ export default function Game() {
 
       {/* Admin Map Editor - Visual Editor Mode */}
       {gameState === "admin_map_editor" && editMode && (
-        <div className="absolute inset-0 bg-slate-950 flex flex-col">
+        <div className="absolute inset-0 bg-slate-950 flex flex-col z-50">
           {/* Header */}
           <div className="bg-slate-900 border-b border-slate-700 p-4 flex justify-between items-center">
             <h2 className="text-xl font-black text-emerald-400">
@@ -1848,11 +1848,11 @@ export default function Game() {
 
           {/* Canvas Area */}
           <div className="relative flex-1">
+            {/* Static Canvas for visual reference */}
             <canvas
-              ref={canvasRef}
               width={CANVAS_WIDTH}
               height={CANVAS_HEIGHT}
-              className="w-full h-full block"
+              className="w-full h-full block bg-slate-800"
             />
 
             {/* Overlay Grid and Elements */}
